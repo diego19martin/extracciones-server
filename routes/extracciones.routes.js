@@ -10,4 +10,5 @@ router.get('/getResumen', getResumen);
 router.get('/getInfo/:maquina', getInfo);
 
 
+
 export default router;

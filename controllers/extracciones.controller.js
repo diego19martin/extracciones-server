@@ -104,13 +104,18 @@ export const postSelect = async (req, res) => {
     i = req.body.length - 1;
 
     if(req.body[i].finalizado === false) {
-        validacion='false'
+        validacion='Pendiente'
     } else {
-        validacion='true'
+        validacion='Extraida'
     }
 
     console.log(i);
     console.log(validacion);
+
+    if (validacion === 'false' ) {
+        req.body[i].asistente1 = '';
+        req.body[i].asistente2 = '';
+    }
 
     
         const [result] = await pool.query('UPDATE listado SET `finalizado`=?, `asistente1`=?, `asistente2`=? WHERE `maquina` = ?', [validacion, req.body[i].asistente1, req.body[i].asistente2, req.body[i].maquina.maquina])
