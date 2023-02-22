@@ -93,6 +93,34 @@ export const getInfo = async (req, res) => {
     )
 
 }
+
+export const postSelect = async (req, res) => {
+
+    // console.log(req.body[0].maquina.maquina);
+
+    var validacion = '';
+    var i = 0;
+
+    i = req.body.length - 1;
+
+    if(req.body[i].finalizado === false) {
+        validacion='false'
+    } else {
+        validacion='true'
+    }
+
+    console.log(i);
+    console.log(validacion);
+
+    
+        const [result] = await pool.query('UPDATE listado SET `finalizado`=?, `asistente1`=?, `asistente2`=? WHERE `maquina` = ?', [validacion, req.body[i].asistente1, req.body[i].asistente2, req.body[i].maquina.maquina])
+        
+        console.log(result);
+
+
+        return res.json('ok')
+
+}
         
 
     
