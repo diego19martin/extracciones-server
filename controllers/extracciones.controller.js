@@ -17,7 +17,6 @@ export const postList = async (req, res) => {
         
         // console.log(result);
 
-
         }
 
         return res.json('ok')
@@ -77,6 +76,7 @@ export const getInfo = async (req, res) => {
             console.log(limit, listado[i].maquina);
             // listadoExtraer.push()
             listadoExtraer = {
+                fecha : listado[i].fecha,
                 maquina : listado[i].maquina,
                 location : listado[i].location,
                 id: listado[i].idlistado
