@@ -63,7 +63,7 @@ export const getInfo = async (req, res) => {
     var listadoExtraer = [];
     var listadoFinal = [];
 
-    const [listado] = await pool.query('SELECT * FROM `listado` WHERE LEFT(`location`, 4) = ?', [location])
+    const [listado] = await pool.query('SELECT * FROM `listado` WHERE LEFT(`location`, 4) = ? ORDER BY (`location`) DESC', [location])
   
 
     console.log(listado);
@@ -73,12 +73,13 @@ export const getInfo = async (req, res) => {
         // console.log(listado.length);
 
         if( listado[i].bill >= limit ) {
-            console.log(limit, listado[i].maquina);
+            // console.log(limit, listado[i].maquina);
             // listadoExtraer.push()
             listadoExtraer = {
                 fecha : listado[i].fecha,
                 maquina : listado[i].maquina,
                 location : listado[i].location,
+                finalizado : listado[i].finalizado,
                 id: listado[i].idlistado
             } 
             listadoFinal.unshift(listadoExtraer)
@@ -86,7 +87,7 @@ export const getInfo = async (req, res) => {
         
     }
     
-    console.log(listadoFinal);
+    // console.log(listadoFinal);
 
     res.json(
         listadoFinal
