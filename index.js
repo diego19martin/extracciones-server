@@ -4,7 +4,12 @@ import extraccionesRoutes from "./routes/extracciones.routes.js"
 
 const app = express();
 
-app.use(cors());
+var corsOptions = {
+    origin: '*',
+    optionsSuccessStatus: 200,
+  }
+app.use(cors(corsOptions));
+app.use(express.json())
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
