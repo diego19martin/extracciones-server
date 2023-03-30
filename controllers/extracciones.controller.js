@@ -45,7 +45,7 @@ export const getResumen = async (req, res) => {
 
         const [result] = await pool.query('SELECT * FROM `listado`')
 
-        console.log(result);
+        // console.log(result);
     
     res.json(result)
 
@@ -56,6 +56,10 @@ export const getInfo = async (req, res) => {
     const [result] = await pool.query('SELECT * FROM `listado` WHERE maquina = ?', [req.params.maquina]);
     const [limite] = await pool.query ('SELECT * FROM `config`')
 
+    console.log(result);
+
+    if (result.length>0) {
+        
     var i = 0;
     var loc = result[0].location;
     var location = loc.slice(0,4);
@@ -93,6 +97,9 @@ export const getInfo = async (req, res) => {
         listadoFinal
     )
 
+}else{
+    res.json('N')
+}
 }
 
 export const postSelect = async (req, res) => {
