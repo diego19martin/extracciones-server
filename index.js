@@ -4,12 +4,12 @@ import extraccionesRoutes from "./routes/extracciones.routes.js"
 
 const app = express();
 
-var corsOptions = {
-    origin: '*',
-    optionsSuccessStatus: 200,
-  }
-app.use(cors(corsOptions));
-app.use(express.json())
+const corsOption = {
+    credentials: true,
+    origin: ['https://extracciones-client-conversion.vercel.app']
+}
+
+app.use(cors(corsOption));
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
