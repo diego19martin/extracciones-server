@@ -9,6 +9,10 @@ const corsOption = {
     origin: ['https://extracciones-client-conversion.vercel.app']
 }
 
+res.setHeader("Access-Control-Allow-Origin", 'https://extracciones-client-conversion.vercel.app');
+res.setHeader('Access-Control-Allow-Methods', 'POST,GET,OPTIONS,PUT,DELETE');
+res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Accept');
+
 app.use(cors(corsOption));
 
 const PORT = process.env.PORT || 4000;
