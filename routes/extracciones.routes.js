@@ -7,7 +7,7 @@ const router = Router();
 
 const corsOption = {
     credentials: true,
-    origin: ['https://extracciones-client-conversion.vercel.app']
+    origin: '*'
 }
 
 
