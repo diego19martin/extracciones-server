@@ -4,19 +4,10 @@ import cors from "cors";
 
 const router = Router();
 
-
-const corsOption = {
-    credentials: true,
-    origin: '*'
-}
-
-
 router.post('/postmaquinas', postList);
 router.post('/postconfig/:limite', postConfig);
 router.post('/postSelect', postSelect);
-router.get('/getResumen', getResumen, cors(corsOption));
-router.get('/getInfo/:maquina', getInfo, cors(corsOption));
-
-
+router.get('/getResumen', getResumen);
+router.get('/getInfo/:maquina', getInfo);
 
 export default router;
