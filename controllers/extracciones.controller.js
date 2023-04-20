@@ -2,7 +2,7 @@ import { pool } from "../db.js";
 
 export const postList = async (req, res) => {
 
-    console.log(req.body);
+    // console.log(req.body);
 
     var fecha = new Date();
 
@@ -45,7 +45,7 @@ export const getResumen = async (req, res) => {
 
         var [result] = await pool.query('SELECT * FROM `listado`')
 
-        // console.log(result);
+        console.log(result);
 
         if(result.length===0){
 
