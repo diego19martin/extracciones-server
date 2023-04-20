@@ -13,7 +13,7 @@ export const postList = async (req, res) => {
         for (i=0; i<req.body.length; i++) {
 
     
-        const [result] = await pool.query('INSERT into listado (maquina, location, bill, fecha) VALUES (?, ?, ?, ?)',[req.body[i].maquina, req.body[i].location, req.body[i].bill, fecha])
+        const [result] = await pool.query('INSERT into listado (maquina, location, bill, fecha) VALUES (?, ?, ?, ?)',[req.body[i].machine, req.body[i].location, req.body[i].bill, fecha])
         
         // console.log(result);
 
@@ -35,7 +35,7 @@ export const postConfig = async (req, res) => {
 
         const [result] = await pool.query('INSERT into config (fecha, limite) VALUES (?, ?)',[fecha, limite])
         
-        console.log(result);
+        // console.log(result);
 
         res.json (result)
 
@@ -43,9 +43,15 @@ export const postConfig = async (req, res) => {
 
 export const getResumen = async (req, res) => {
 
-        const [result] = await pool.query('SELECT * FROM `listado`')
+        var [result] = await pool.query('SELECT * FROM `listado`')
 
-        // console.log(result);
+        console.log(result);
+
+        if(result.length===0){
+
+            result = [{fecha: 'Sin datos', maquina: 0}]
+            
+        }
     
     res.json(result)
 
@@ -56,7 +62,7 @@ export const getInfo = async (req, res) => {
     const [result] = await pool.query('SELECT * FROM `listado` WHERE maquina = ?', [req.params.maquina]);
     const [limite] = await pool.query ('SELECT * FROM `config`')
 
-    console.log(result);
+    // console.log(result);
 
     if (result.length>0) {
         
@@ -70,7 +76,7 @@ export const getInfo = async (req, res) => {
     const [listado] = await pool.query('SELECT * FROM `listado` WHERE LEFT(`location`, 4) = ? ORDER BY (`location`) DESC', [location])
   
 
-    console.log(listado);
+    // console.log(listado);
 
     for(i=0; i < listado.length; i++) {
 
@@ -119,8 +125,8 @@ export const postSelect = async (req, res) => {
         validacion= 'No Disponible'
     }
 
-    console.log(i);
-    console.log(validacion);
+    // console.log(i);
+    // console.log(validacion);
 
     if (validacion === 'Pendiente' ) {
         req.body[i].asistente1 = '';
@@ -130,7 +136,7 @@ export const postSelect = async (req, res) => {
     
         const [result] = await pool.query('UPDATE listado SET `finalizado`=?, `asistente1`=?, `asistente2`=?, `comentario`=? WHERE `maquina` = ?', [validacion, req.body[i].asistente1, req.body[i].asistente2, req.body[i].comentario ,req.body[i].maquina.maquina])
         
-        console.log(result);
+        // console.log(result);
 
 
         return res.json('ok')
