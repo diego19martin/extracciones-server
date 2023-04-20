@@ -4,7 +4,7 @@ import extraccionesRoutes from "./routes/extracciones.routes.js"
 
 const app = express();
 
-// app.use(cors());
+app.use(cors());
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
