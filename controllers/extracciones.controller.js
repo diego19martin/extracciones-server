@@ -2,7 +2,6 @@ import { pool } from "../db.js";
 
 export const postList = async (req, res) => {
 
-    // console.log(req.body);
 
     var fecha = new Date();
 
