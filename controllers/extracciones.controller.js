@@ -44,7 +44,7 @@ export const getResumen = async (req, res) => {
 
         var [result] = await pool.query('SELECT * FROM `listado`')
 
-        console.log(result);
+        // console.log(result);
 
         if(result.length===0){
 
@@ -96,7 +96,7 @@ export const getInfo = async (req, res) => {
         
     }
     
-    // console.log(listadoFinal);
+    console.log(listadoFinal);
 
     res.json(
         listadoFinal
