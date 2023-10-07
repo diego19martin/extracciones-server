@@ -4,7 +4,7 @@ import extraccionesRoutes from "./routes/extracciones.routes.js"
 
 const app = express();
 
-app.use(cors());
+// app.use(cors());
 
 // Aumentar el límite de tamaño de carga a 10 MB
 app.use(bodyParser.json({ limit: '10mb' }));
