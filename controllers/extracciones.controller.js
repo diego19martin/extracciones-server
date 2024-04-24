@@ -2,6 +2,7 @@ import { pool } from "../db.js";
 
 export const postList = async (req, res) => {
 
+    console.log(req.body);
 
     var fecha = new Date();
 
@@ -12,7 +13,7 @@ export const postList = async (req, res) => {
         for (i=0; i<req.body.length; i++) {
 
     
-        const [result] = await pool.query('INSERT into listado (maquina, location, bill, fecha) VALUES (?, ?, ?, ?)',[req.body[i].machine, req.body[i].location, req.body[i].bill, fecha])
+        const [result] = await pool.query('INSERT into listado (maquina, location, bill, fecha, zona) VALUES (?, ?, ?, ?, ?)',[req.body[i].machine, req.body[i].location, req.body[i].bill, fecha, req.body[i].zona])
         
         // console.log(result);
 
@@ -67,6 +68,7 @@ export const getInfo = async (req, res) => {
         
     var i = 0;
     var loc = result[0].location;
+    console.log(loc);
     var location = loc.slice(0,4);
     var limit = limite[0].limite;
     var listadoExtraer = [];
@@ -84,12 +86,14 @@ export const getInfo = async (req, res) => {
         if( listado[i].bill >= limit ) {
             // console.log(limit, listado[i].maquina);
             // listadoExtraer.push()
+            console.log(listado[i]);
             listadoExtraer = {
                 fecha : listado[i].fecha,
                 maquina : listado[i].maquina,
                 location : listado[i].location,
                 finalizado : listado[i].finalizado,
-                id: listado[i].idlistado
+                id: listado[i].idlistado,
+                zona: listado[i].zona,
             } 
             listadoFinal.unshift(listadoExtraer)
         }
@@ -109,31 +113,25 @@ export const getInfo = async (req, res) => {
 
 export const postSelect = async (req, res) => {
 
-    // console.log(req.body[0].maquina.maquina);
+    // console.log(req.body);
+
+    const finalizado = req.body.finalizado;
+
+    // console.log(finalizado);
 
     var validacion = '';
     var i = 0;
 
     i = req.body.length - 1;
 
-    if(req.body[i].finalizado === false) {
-        validacion='Pendiente'
-    } else if (req.body[i].finalizado === true) {
-        validacion='Completa'
-    } else {
-        validacion= 'No Disponible'
-    }
-
-    // console.log(i);
-    // console.log(validacion);
 
     if (validacion === 'Pendiente' ) {
-        req.body[i].asistente1 = '';
-        req.body[i].asistente2 = '';
+        req.body.asistente1 = '';
+        req.body.asistente2 = '';
     }
 
     
-        const [result] = await pool.query('UPDATE listado SET `finalizado`=?, `asistente1`=?, `asistente2`=?, `comentario`=? WHERE `maquina` = ?', [validacion, req.body[i].asistente1, req.body[i].asistente2, req.body[i].comentario ,req.body[i].maquina.maquina])
+        const [result] = await pool.query('UPDATE listado SET `finalizado`=?, `asistente1`=?, `asistente2`=?, `comentario`=? WHERE `maquina` = ?', [finalizado, req.body.asistente1, req.body.asistente2, req.body.comentario ,req.body.maquina.maquina])
         
         // console.log(result);
 
