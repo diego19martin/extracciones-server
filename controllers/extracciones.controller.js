@@ -62,7 +62,7 @@ export const getInfo = async (req, res) => {
     const [result] = await pool.query('SELECT * FROM `listado` WHERE maquina = ?', [req.params.maquina]);
     const [limite] = await pool.query ('SELECT * FROM `config`')
 
-    // console.log(result);
+    console.log(result, limite);
 
     if (result.length>0) {
         
@@ -86,7 +86,7 @@ export const getInfo = async (req, res) => {
         if( listado[i].bill >= limit ) {
             // console.log(limit, listado[i].maquina);
             // listadoExtraer.push()
-            console.log(listado[i]);
+            // console.log(listado[i]);
             listadoExtraer = {
                 fecha : listado[i].fecha,
                 maquina : listado[i].maquina,
@@ -100,7 +100,7 @@ export const getInfo = async (req, res) => {
         
     }
     
-    console.log(listadoFinal);
+    // console.log(listadoFinal);
 
     res.json(
         listadoFinal
