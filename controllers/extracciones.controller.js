@@ -42,20 +42,18 @@ export const postConfig = async (req, res) => {
 }
 
 export const getResumen = async (req, res) => {
-
-        var [result] = await pool.query('SELECT * FROM `listado`')
-
-        // console.log(result);
-
-        if(result.length===0){
-
-            result = [{fecha: 'Sin datos', maquina: 0}]
-            
+    try {
+        const [result] = await pool.query('SELECT * FROM `listado` ORDER BY location ASC');
+        if (result.length === 0) {
+            result = [{ fecha: 'Sin datos', maquina: 0 }];
         }
-    
-    res.json(result)
+        res.json(result);
+    } catch (error) {
+        console.error('Error al obtener el resumen:', error);
+        res.status(500).json({ error: 'Error al obtener el resumen' });
+    }
+};
 
-}
 
 export const getInfo = async (req, res) => {
 
