@@ -18,18 +18,23 @@ export const postList = async (req, res) => {
 }
 
 export const postConfig = async (req, res) => {
+
     try {
         
         console.log(req.body);
         
-        const { limitePesos, limiteDolares } = req.body; // Recibir los límites del cuerpo de la solicitud
+        const { valuePesos, valueDolares } = req.body; // Recibir los límites del cuerpo de la solicitud
+
+        console.log(valuePesos, valueDolares);
+
+        
         var fecha = new Date();
 
         // Limpiar la tabla de configuración anterior
         const [truncate] = await pool.query('TRUNCATE config');
 
         // Insertar los nuevos valores en la tabla config
-        const [result] = await pool.query('INSERT INTO config (fecha, limite_pesos, limite_dolares) VALUES (?, ?, ?)', [fecha, limitePesos, limiteDolares]);
+        const [result] = await pool.query('INSERT INTO config (fecha, limite, limiteDolar) VALUES (?, ?, ?)', [fecha, valuePesos, valueDolares]);
         
         res.json({ message: 'Configuración actualizada correctamente', data: result });
     } catch (error) {
@@ -43,7 +48,7 @@ export const getResumen = async (req, res) => {
         let result;
         try {
             [result] = await pool.query('SELECT * FROM `listado` ORDER BY location ASC');
-            console.log('Query de listado ejecutada correctamente:', result);
+            // console.log('Query de listado ejecutada correctamente:', result);
         } catch (error) {
             console.error('Error ejecutando la query de listado:', error);
             throw error;
@@ -51,7 +56,7 @@ export const getResumen = async (req, res) => {
         if (result.length === 0) {
             result = [{ fecha: 'Sin datos', maquina: 0 }];
         }
-        console.log('Resultado de la consulta getResumen:', result);
+        // console.log('Resultado de la consulta getResumen:', result);
         res.json(result);
     } catch (error) {
         console.error('Error al obtener el resumen:', error);
@@ -60,49 +65,59 @@ export const getResumen = async (req, res) => {
 };
 
 export const getInfo = async (req, res) => {
-    const [result] = await pool.query('SELECT * FROM `listado` WHERE maquina = ?', [req.params.maquina]);
-    const [limite] = await pool.query ('SELECT * FROM `config`');
 
-    console.log('Resultado de getInfo (máquina y límite):', result, limite);
+    const { maquina } = req.params;
+    console.log('Número de máquina recibido:', maquina);
 
-    if (result.length > 0) {
-        var i = 0;
-        var loc = result[0].location;
-        console.log(loc);
-        var location = loc.slice(0,4);
-        var limitPesos = limite[0].limite_pesos;
-        var limitDolares = limite[0].limite_dolares;
-        var listadoExtraer = [];
-        var listadoFinal = [];
+    try {
+        const [result] = await pool.query('SELECT * FROM `listado` WHERE maquina = ?', [maquina]);
+        const [limite] = await pool.query('SELECT * FROM `config`');
 
-        let listado;
-        try {
-            [listado] = await pool.query('SELECT * FROM `listado` WHERE LEFT(`location`, 4) = ? ORDER BY (`location`) DESC', [location]);
-            console.log('Query de listado filtrada por location ejecutada correctamente:', listado);
-        } catch (error) {
-            console.error('Error ejecutando la query de listado filtrada por location:', error);
-            throw error;
-        }
+        console.log('Resultado de getInfo (máquina y límite):', result, limite);
 
-        for(i = 0; i < listado.length; i++) {
-            if ((listado[i].moneda === 'pesos' && listado[i].bill >= limitPesos) ||
-                (listado[i].moneda === 'dolares' && listado[i].bill >= limitDolares)) {
-                listadoExtraer = {
-                    fecha : listado[i].fecha,
-                    maquina : listado[i].maquina,
-                    location : listado[i].location,
-                    finalizado : listado[i].finalizado,
-                    id: listado[i].idlistado,
-                    zona: listado[i].zona,
-                };
-                listadoFinal.unshift(listadoExtraer);
+        if (result.length > 0) {
+            var loc = result[0].location;
+            console.log(loc);
+            var location = loc.slice(0, 4);
+            var limitPesos = limite[0].limite;
+            var limitDolares = limite[0].limiteDolar;
+            var listadoFinal = [];
+
+            let listado;
+            try {
+                [listado] = await pool.query('SELECT * FROM `listado` WHERE LEFT(`location`, 4) = ? ORDER BY (`location`) DESC', [location]);
+            } catch (error) {
+                console.error('Error ejecutando la query de listado filtrada por location:', error);
+                throw error;
             }
+
+            for (let i = 0; i < listado.length; i++) {
+                if ((listado[i].moneda === 'pesos' && listado[i].bill >= limitPesos) ||
+                    (listado[i].moneda === 'dolares' && listado[i].bill >= limitDolares)) {
+                    const listadoExtraer = {
+                        fecha: listado[i].fecha,
+                        maquina: listado[i].maquina,
+                        location: listado[i].location,
+                        finalizado: listado[i].finalizado,
+                        id: listado[i].idlistado,
+                        zona: listado[i].zona,
+                    };
+                    listadoFinal.unshift(listadoExtraer);
+                }
+            }
+            console.log("listado", listadoFinal);
+            
+            res.json(listadoFinal);
+        } else {
+            res.json('N');
         }
-        res.json(listadoFinal);
-    } else {
-        res.json('N');
+    } catch (error) {
+        console.error('Error al obtener la información:', error);
+        res.status(500).json({ error: 'Error al obtener la información' });
     }
 };
+
+
 
 export const postSelect = async (req, res) => {
     const finalizado = req.body.finalizado;
