@@ -1,7 +1,8 @@
 import { pool } from "../db.js";
+import { io } from "../index.js";
 
 export const postList = async (req, res) => {
-    console.log(req.body);
+    // console.log(req.body);
 
     var fecha = new Date();
 
@@ -9,10 +10,19 @@ export const postList = async (req, res) => {
 
     const [truncate] = await pool.query('TRUNCATE listado');
 
-    for (i=0; i<req.body.length; i++) {
-        const [result] = await pool.query('INSERT into listado (maquina, location, bill, fecha, zona, moneda) VALUES (?, ?, ?, ?, ?, ?)',
-          [req.body[i].machine, req.body[i].location, req.body[i].bill, fecha, req.body[i].zona, req.body[i].moneda]);
-    }
+    const insertValues = req.body.map(({ machine, location, bill, zona, moneda }) => 
+        `('${machine}', '${location}', '${bill}', NOW(), '${zona}', '${moneda}')`
+      ).join(',');
+      
+      const query = `INSERT INTO listado (maquina, location, bill, fecha, zona, moneda) VALUES ${insertValues}`;
+      await pool.query(query);
+      
+
+    console.log('postList')
+
+    const [updatedTable] = await pool.query('SELECT * FROM `listado` ORDER BY location ASC');
+    io.emit('tableUpdate', updatedTable);
+
 
     return res.json('ok');
 }
@@ -21,11 +31,11 @@ export const postConfig = async (req, res) => {
 
     try {
         
-        console.log(req.body);
+        // console.log(req.body);
         
         const { valuePesos, valueDolares } = req.body; // Recibir los límites del cuerpo de la solicitud
 
-        console.log(valuePesos, valueDolares);
+        // console.log(valuePesos, valueDolares);
 
         
         var fecha = new Date();
@@ -67,13 +77,13 @@ export const getResumen = async (req, res) => {
 export const getInfo = async (req, res) => {
 
     const { maquina } = req.params;
-    console.log('Número de máquina recibido:', maquina);
+    // console.log('Número de máquina recibido:', maquina);
 
     try {
         const [result] = await pool.query('SELECT * FROM `listado` WHERE maquina = ?', [maquina]);
         const [limite] = await pool.query('SELECT * FROM `config`');
 
-        console.log('Resultado de getInfo (máquina y límite):', result, limite);
+        // console.log('Resultado de getInfo (máquina y límite):', result, limite);
 
         if (result.length > 0) {
             var loc = result[0].location;
@@ -105,7 +115,7 @@ export const getInfo = async (req, res) => {
                     listadoFinal.unshift(listadoExtraer);
                 }
             }
-            console.log("listado", listadoFinal);
+            // console.log("listado", listadoFinal);
             
             res.json(listadoFinal);
         } else {
@@ -131,7 +141,18 @@ export const postSelect = async (req, res) => {
         req.body.asistente2 = '';
     }
 
-    const [result] = await pool.query('UPDATE listado SET `finalizado`=?, `asistente1`=?, `asistente2`=?, `comentario`=? WHERE `maquina` = ?', [finalizado, req.body.asistente1, req.body.asistente2, req.body.comentario ,req.body.maquina.maquina]);
+    try {
+        const [result] = await pool.query('UPDATE listado SET `finalizado`=?, `asistente1`=?, `asistente2`=?, `comentario`=? WHERE `maquina` = ?', [finalizado, req.body.asistente1, req.body.asistente2, req.body.comentario ,req.body.maquina.maquina]);
 
-    return res.json('ok');
+        // Fetch updated table data
+        const [updatedTable] = await pool.query('SELECT * FROM `listado` ORDER BY location ASC');
+
+        // Emit the updated table to all connected clients
+        io.emit('tableUpdate', updatedTable);
+
+        return res.json('ok');
+    } catch (error) {
+        console.error('Error updating record:', error);
+        return res.status(500).json({ error: 'Error updating record' });
+    }
 };
