@@ -413,25 +413,52 @@ export const generarYEnviarReporte = async (req, res) => {
         await workbook.xlsx.writeFile(reportFilePath);
         console.log('Reporte generado exitosamente:', reportFilePath);
 
-        res.json({ message: 'Reporte generado correctamente' }); // Asegúrate de enviar una respuesta
-
         // Enviar el correo con el reporte adjunto
         await enviarCorreoReporte(reportFilePath, 'tecnica');
 
-       
+        if (res) {
+            res.json({ message: 'Reporte generado correctamente' }); // Solo enviar la respuesta si existe `res`
+        }
 
     } catch (error) {
         console.error('Error al generar y enviar el reporte:', error);
+        if (res) {
+            res.status(500).json({ error: 'Error al generar el reporte' });
+        }
     }
-
 };
+
 
 
 const enviarCorreoReporte = async (filePath, tipoReporte) => {
     try {
+        // Listas de destinatarios
+        const destinatariosTecnica = [
+            'tecnico1@casino.com',
+            'tecnico2@casino.com',
+            'tecnico3@casino.com'
+        ];
+
+        const destinatariosZonas = [
+            'zona1@casino.com',
+            'zona2@casino.com',
+            'zona3@casino.com'
+        ];
 
         // Configurar el asunto dependiendo del tipo de reporte
         const asunto = tipoReporte === 'zona' ? 'Reporte de Extracciones por Zona' : 'Reporte de Extracciones de Máquinas Técnica';
+
+        // Seleccionar destinatarios según el tipo de reporte
+        let destinatarios;
+        if (tipoReporte === 'tecnica') {
+            destinatarios = destinatariosTecnica;
+        } else if (tipoReporte === 'zona') {
+            destinatarios = destinatariosZonas;
+        } else {
+            console.error('Tipo de reporte no válido:', tipoReporte);
+            return; // Salir de la función si el tipo de reporte no es válido
+        }
+
         // Configurar el transporte del correo usando Hostinger
         const transporter = nodemailer.createTransport({
             host: 'smtp.hostinger.com', // Servidor SMTP de Hostinger
@@ -446,7 +473,7 @@ const enviarCorreoReporte = async (filePath, tipoReporte) => {
         // Configurar los detalles del correo
         const mailOptions = {
             from: 'reportes@dadesarrollos.com', // Dirección de correo de origen
-            to: 'dargonz@palermo.com.ar, jzuazo@palermo.com.ar', // Destinatario del correo
+            to: destinatarios.join(','), // Convertir la lista de destinatarios a una cadena separada por comas
             subject: asunto,
             text: 'Adjunto encontrarás el reporte extracciones.',
             attachments: [
@@ -459,8 +486,68 @@ const enviarCorreoReporte = async (filePath, tipoReporte) => {
 
         // Enviar el correo
         await transporter.sendMail(mailOptions);
-        console.log('Correo enviado exitosamente.');
+        console.log(`Correo enviado a: ${destinatarios.join(', ')}`);
     } catch (error) {
         console.error('Error al enviar el correo:', error);
+    }
+};
+
+
+export const getEmployees = async (req, res) => {
+    try {
+        const [employees] = await pool.query('SELECT * FROM empleados ORDER BY nombre ASC');
+        res.json(employees);
+    } catch (error) {
+        console.error('Error al obtener empleados:', error);
+        res.status(500).json({ error: 'Error al obtener empleados' });
+    }
+};
+
+export const addEmployee = async (req, res) => {
+    try {
+        const { nombre } = req.body
+        const [result] = await pool.query('INSERT INTO empleados (nombre) VALUES (?)', [nombre]);
+        res.json({ id: result.insertId, nombre });
+    } catch (error) {
+        console.error('Error al agregar empleado:', error);
+        res.status(500).json({ error: 'Error al agregar empleado' });
+    }
+};
+
+export const removeEmployee = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await pool.query('DELETE FROM empleados WHERE empleado_id = ?', [id]);
+        res.json({ message: 'Empleado eliminado correctamente' });
+    } catch (error) {
+        console.error('Error al eliminar empleado:', error);
+        res.status(500).json({ error: 'Error al eliminar empleado' });
+    }
+};
+
+export const uploadEmployees = async (req, res) => {
+    try {
+
+        // Limpiar la tabla de configuración anterior
+        const [truncate] = await pool.query('TRUNCATE empleados');
+        
+        const { employees } = req.body;
+        for (let employee of employees) {
+            await pool.query('INSERT INTO empleados (nombre) VALUES (?)', [employee.nombre]);
+        }
+        res.json({ message: 'Empleados cargados correctamente' });
+    } catch (error) {
+        console.error('Error al cargar empleados:', error);
+        res.status(500).json({ error: 'Error al cargar empleados' });
+    }
+};
+
+export const getEmpleados = async (req, res) => {
+    try {
+        const [empleados] = await pool.query('SELECT nombre FROM empleados');
+        res.json(empleados);
+    } catch (error) {
+        console.error('Error al obtener empleados:', error);
+        res.status(500).json({ error: 'Error al obtener empleados' });
     }
 };
