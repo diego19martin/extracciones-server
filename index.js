@@ -8,7 +8,7 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "extracciones-client-conversion.vercel.app",
+    origin: "https://extracciones-client-conversion.vercel.app",
     methods: ["GET", "POST"]
   }
 });
