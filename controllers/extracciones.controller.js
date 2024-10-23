@@ -434,15 +434,19 @@ const enviarCorreoReporte = async (filePath, tipoReporte) => {
     try {
         // Listas de destinatarios
         const destinatariosTecnica = [
-            'tecnico1@casino.com',
-            'tecnico2@casino.com',
-            'tecnico3@casino.com'
+            'dargonz@palermo.com.ar',
+            'mholley@palermo.com.ar',
+            'sespinoza@palermo.com.ar',
+            'jmaldonado@palermo.com.ar',
+            'jzuazo@palermo.com.ar'
         ];
 
         const destinatariosZonas = [
-            'zona1@casino.com',
-            'zona2@casino.com',
-            'zona3@casino.com'
+            'dargonz@palermo.com.ar',
+            'mfernandez@palermo.com.ar',
+            'lvega@palermo.com.ar',
+            'vbove@palermo.com.ar',
+            'gcarmona@palermo.com.ar'
         ];
 
         // Configurar el asunto dependiendo del tipo de reporte
