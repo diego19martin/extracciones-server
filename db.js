@@ -3,6 +3,9 @@ import env from "dotenv";
 
 env.config({path:'./env/.env'})
 
+console.log(process.env.DB_HOST, process.env.DB_USER, process.env.DB_PASS, process.env.DB_DATABASE);
+
+
 export const pool = createPool({
 
     host: process.env.DB_HOST,
