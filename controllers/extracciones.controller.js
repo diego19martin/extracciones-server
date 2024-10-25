@@ -608,6 +608,11 @@ const enviarCorreoReporte = async (filePath, tipoReporte) => {
 
         const destinatariosDiario = [
             'dargonz@palermo.com.ar',
+            'jzuazo@palermo.com.ar',
+            'gaguiar@palermo.com.ar',
+            'fbernardo@palermo.com.ar',
+            'fdotti@palermo.com.ar',
+            'crodriguez@palermo.com.ar'
         ];
 
         // Seleccionar los destinatarios según el tipo de reporte
