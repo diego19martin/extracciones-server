@@ -44,7 +44,7 @@ cron.schedule('0 13 * * *', () => {
 });
 
 // Programa la tarea para las 14:00 UTC (que es 11:00 AM en Buenos Aires)
-cron.schedule('30 15 * * *', () => {
+cron.schedule('25 15 * * *', () => {
   console.log('Generando y enviando reporte técnico a las 11:00 AM Buenos Aires (14:00 UTC)');
   generarYEnviarReporte('tecnica'); // Asegúrate de pasar el tipo de reporte correcto
 });
