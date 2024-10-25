@@ -38,13 +38,13 @@ server.listen(PORT, () => {
 });
 
 // Programa la tarea para las 10 AM todos los días
-cron.schedule('0 13 * * *', () => {
+cron.schedule('0 14 * * *', () => {
   console.log('Generando y enviando reporte diario a las 10 AM');
   generarReporteResumen(); // Llama a la función que genera y envía el reporte
 });
 
 // Programa la tarea para las 14:00 UTC (que es 11:00 AM en Buenos Aires)
-cron.schedule('25 15 * * *', () => {
+cron.schedule('0 14 * * *', () => {
   console.log('Generando y enviando reporte técnico a las 11:00 AM Buenos Aires (14:00 UTC)');
   generarYEnviarReporte('tecnica'); // Asegúrate de pasar el tipo de reporte correcto
 });
