@@ -37,7 +37,7 @@ server.listen(PORT, () => {
 });
 
 // Programa la tarea para las 10 AM todos los días
-cron.schedule('24 1 * * *', () => {
+cron.schedule('35 4 * * *', () => {
   console.log('Generando y enviando reporte diario a las 10 AM');
   generarReporteResumen(); // Llama a la función que genera y envía el reporte
 });
