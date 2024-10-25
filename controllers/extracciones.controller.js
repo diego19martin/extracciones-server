@@ -457,7 +457,10 @@ const enviarCorreoReporte = async (filePath, tipoReporte) => {
             'mholley@palermo.com.ar',
             'sespinoza@palermo.com.ar',
             'jmaldonado@palermo.com.ar',
-            'jzuazo@palermo.com.ar'
+            'jzuazo@palermo.com.ar',
+            'gaguiar@palermo.com.ar',
+            'fbernardo@palermo.com.ar',
+            'fdotti@palermo.com.ar'
         ];
 
         const destinatariosZonas = [
@@ -476,17 +479,17 @@ const enviarCorreoReporte = async (filePath, tipoReporte) => {
         const asunto = tipoReporte === 'zona' ? 'Reporte de Extracciones por Zona' : 'Reporte de Extracciones de Máquinas Técnica';
 
         // Seleccionar destinatarios según el tipo de reporte
-        // let destinatarios;
-        // if (tipoReporte === 'tecnica') {
-        //     destinatarios = destinatariosTecnica;
-        // } else if (tipoReporte === 'zona') {
-        //     destinatarios = destinatariosZonas;
-        // } else {
-        //     console.error('Tipo de reporte no válido:', tipoReporte);
-        //     return; // Salir de la función si el tipo de reporte no es válido
-        // }
+        let destinatarios;
+        if (tipoReporte === 'tecnica') {
+            destinatarios = destinatariosTecnica;
+        } else if (tipoReporte === 'zona') {
+            destinatarios = destinatariosZonas;
+        } else {
+            console.error('Tipo de reporte no válido:', tipoReporte);
+            return; // Salir de la función si el tipo de reporte no es válido
+        }
 
-        let destinatarios = destinatarioPrueba;
+        // let destinatarios = destinatarioPrueba;
 
         // Configurar el transporte del correo usando Hostinger
         const transporter = nodemailer.createTransport({
