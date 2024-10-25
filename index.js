@@ -4,7 +4,8 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import extraccionesRoutes from "./routes/extracciones.routes.js";
 import cron from 'node-cron';
-import { generarReporteResumen } from './controllers/extracciones.controller.js'; // Importa tu función
+import { generarReporteResumen, generarYEnviarReporte } from './controllers/extracciones.controller.js'; // Importa tu función
+
 
 const app = express();
 const server = createServer(app);
@@ -40,6 +41,12 @@ server.listen(PORT, () => {
 cron.schedule('0 13 * * *', () => {
   console.log('Generando y enviando reporte diario a las 10 AM');
   generarReporteResumen(); // Llama a la función que genera y envía el reporte
+});
+
+// Programa la tarea para las 14:00 UTC (que es 11:00 AM en Buenos Aires)
+cron.schedule('30 15 * * *', () => {
+  console.log('Generando y enviando reporte técnico a las 11:00 AM Buenos Aires (14:00 UTC)');
+  generarYEnviarReporte('tecnica'); // Asegúrate de pasar el tipo de reporte correcto
 });
 
 export { io };
