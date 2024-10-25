@@ -448,6 +448,141 @@ export const generarYEnviarReporte = async (req, res) => {
 };
 
 
+export const generarReporteResumen = async () => {
+    console.log('Generando reporte diario...');
+
+    try {
+        const [result] = await pool.query('SELECT * FROM `listado_filtrado`');
+
+        if (result.length === 0) {
+            console.log('No hay datos en listado_filtrado.');
+            return;
+        }
+
+        const maquinasFinalizadas = result.filter(row => row.finalizado === 'Completa');
+        const maquinasPendientes = result.filter(row => row.finalizado === 'Pendiente');
+        const maquinasNoEscaneadas = result.filter(row => row.finalizado === null);
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Reporte Diario');
+
+        // 1. Título
+        worksheet.mergeCells('A1:H1');
+        const titleCell = worksheet.getCell('A1');
+        titleCell.value = "Reporte Diario de Extracciones - " + new Date().toLocaleDateString();
+        titleCell.font = { size: 18, bold: true };
+        titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+        titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCCCCFF' } };
+
+        worksheet.addRow([]); // Fila vacía para separación
+
+        let currentRow = worksheet.lastRow.number + 1; // Control de filas dinámico
+
+        // 2. Sección para Máquinas Finalizadas
+        worksheet.addRow(['Máquinas Finalizadas']);
+        worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
+        const subTitleFinalizadas = worksheet.getCell(`A${currentRow}`);
+        subTitleFinalizadas.font = { size: 14, bold: true, color: { argb: 'FF006400' } }; // Verde oscuro
+        currentRow++;
+
+        worksheet.addRow(['ID', 'Máquina', 'Location', 'Dinero', 'Fecha', 'Zona', 'Moneda', 'Estado', 'Asistente 1', 'Asistente 2']);
+        let headerFinalizadas = worksheet.getRow(currentRow);
+        headerFinalizadas.eachCell(cell => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'D3D3D3' } }; // Gris claro
+            cell.font = { bold: true };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        });
+        currentRow++;
+
+        maquinasFinalizadas.forEach(row => {
+            const newRow = worksheet.addRow([row.id, row.maquina, row.location, row.bill, row.fecha, row.zona, row.moneda, row.finalizado, row.asistente1, row.asistente2]);
+            newRow.eachCell((cell, colNumber) => {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDFFFD4' } }; // Verde claro
+                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+            });
+            currentRow++;
+        });
+
+        worksheet.addRow([]); // Fila vacía para separación
+        currentRow++;
+
+        // 3. Sección para Máquinas Pendientes
+        worksheet.addRow(['Máquinas Pendientes']);
+        worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
+        const subTitlePendientes = worksheet.getCell(`A${currentRow}`);
+        subTitlePendientes.font = { size: 14, bold: true, color: { argb: 'FFFFA500' } }; // Naranja
+        currentRow++;
+
+        worksheet.addRow(['ID', 'Máquina', 'Location', 'Dinero', 'Fecha', 'Zona', 'Moneda', 'Estado', 'asistente 1', 'asistente 2']);
+        let headerPendientes = worksheet.getRow(currentRow);
+        headerPendientes.eachCell(cell => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'D3D3D3' } }; // Gris claro
+            cell.font = { bold: true };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        });
+        currentRow++;
+
+        maquinasPendientes.forEach(row => {
+            const newRow = worksheet.addRow([row.id, row.maquina, row.location, row.bill, row.fecha, row.zona, row.moneda, row.finalizado, row.asistente1, row.asistente2]);
+            newRow.eachCell((cell, colNumber) => {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFE0' } }; // Amarillo claro
+                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+            });
+            currentRow++;
+        });
+
+        worksheet.addRow([]); // Fila vacía para separación
+        currentRow++;
+
+        // 4. Sección para Máquinas No Escaneadas
+        worksheet.addRow(['Máquinas No Escaneadas']);
+        worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
+        const subTitleNoEscaneadas = worksheet.getCell(`A${currentRow}`);
+        subTitleNoEscaneadas.font = { size: 14, bold: true, color: { argb: 'FFFF0000' } }; // Rojo
+        currentRow++;
+
+        worksheet.addRow(['ID', 'Máquina', 'Location', 'Dinero', 'Fecha', 'Zona', 'Moneda', 'Estado']);
+        let headerNoEscaneadas = worksheet.getRow(currentRow);
+        headerNoEscaneadas.eachCell(cell => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'D3D3D3' } }; // Gris claro
+            cell.font = { bold: true };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        });
+        currentRow++;
+
+        maquinasNoEscaneadas.forEach(row => {
+            const newRow = worksheet.addRow([row.id, row.maquina, row.location, row.bill, row.fecha, row.zona, row.moneda, row.finalizado || 'No escaneada']);
+            newRow.eachCell((cell, colNumber) => {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC0CB' } }; // Rojo claro
+                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+            });
+            currentRow++;
+        });
+
+        // Ajustar el ancho de las columnas
+        worksheet.columns.forEach(column => {
+            column.width = 20;
+        });
+
+        // Guardar el archivo Excel
+        const reportPath = path.join(__dirname, '../reportes', `reporte_diario_${new Date().toISOString().split('T')[0]}.xlsx`);
+        await workbook.xlsx.writeFile(reportPath);
+        console.log('Reporte generado:', reportPath);
+
+        // Enviar el reporte por correo
+        await enviarCorreoReporte(reportPath, 'diario');
+
+    } catch (error) {
+        console.error('Error al generar o enviar el reporte diario:', error);
+    }
+};
+
+
+
+
 
 const enviarCorreoReporte = async (filePath, tipoReporte) => {
     try {
@@ -471,25 +606,22 @@ const enviarCorreoReporte = async (filePath, tipoReporte) => {
             'gcarmona@palermo.com.ar'
         ];
 
-        const destinatarioPrueba = [
-            'dargonz@palermo.com.ar'
-        ]
+        const destinatariosDiario = [
+            'dargonz@palermo.com.ar',
+        ];
 
-        // Configurar el asunto dependiendo del tipo de reporte
-        const asunto = tipoReporte === 'zona' ? 'Reporte de Extracciones por Zona' : 'Reporte de Extracciones de Máquinas Técnica';
-
-        // Seleccionar destinatarios según el tipo de reporte
+        // Seleccionar los destinatarios según el tipo de reporte
         let destinatarios;
         if (tipoReporte === 'tecnica') {
             destinatarios = destinatariosTecnica;
         } else if (tipoReporte === 'zona') {
             destinatarios = destinatariosZonas;
+        } else if (tipoReporte === 'diario') {
+            destinatarios = destinatariosDiario;
         } else {
             console.error('Tipo de reporte no válido:', tipoReporte);
             return; // Salir de la función si el tipo de reporte no es válido
         }
-
-        // let destinatarios = destinatarioPrueba;
 
         // Configurar el transporte del correo usando Hostinger
         const transporter = nodemailer.createTransport({
@@ -502,12 +634,19 @@ const enviarCorreoReporte = async (filePath, tipoReporte) => {
             },
         });
 
+        // Configurar el asunto dependiendo del tipo de reporte
+        const asunto = tipoReporte === 'zona' 
+            ? 'Reporte de Extracciones por Zona' 
+            : tipoReporte === 'tecnica'
+            ? 'Reporte de Extracciones Técnica'
+            : 'Reporte Diario de Extracciones';
+
         // Configurar los detalles del correo
         const mailOptions = {
             from: 'reportes@dadesarrollos.com', // Dirección de correo de origen
             to: destinatarios.join(','), // Convertir la lista de destinatarios a una cadena separada por comas
             subject: asunto,
-            text: 'Adjunto encontrarás el reporte extracciones.',
+            text: 'Adjunto encontrarás el reporte de extracciones.',
             attachments: [
                 {
                     filename: path.basename(filePath),
