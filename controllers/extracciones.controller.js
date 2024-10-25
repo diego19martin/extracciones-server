@@ -15,34 +15,40 @@ const __dirname = dirname(__filename);
 
 
 export const postList = async (req, res) => {
-    
     try {
         const { machines, valuePesos, valueDolares } = req.body; // Recibir máquinas y límites desde el cuerpo de la solicitud
 
-        // Filtrar las máquinas según los límites proporcionados
-        const filteredMachines = machines.filter(machine => 
+        // Limpiar la tabla de configuración anterior
+        await pool.query('TRUNCATE listado');
+        await pool.query('TRUNCATE listado_filtrado');
+
+        // Insertar todas las máquinas en la tabla "listado"
+        const insertValues = machines.map(({ machine, location, bill, zona, moneda }) =>
+            `('${machine}', '${location}', '${bill}', NOW(), '${zona}', '${moneda}')`
+        ).join(',');
+
+        const queryListado = `INSERT INTO listado (maquina, location, bill, fecha, zona, moneda) VALUES ${insertValues}`;
+        await pool.query(queryListado);
+        
+        // Filtrar las máquinas que cumplen con las condiciones y guardar en "listado_filtrado"
+        const filteredMachines = machines.filter(machine =>
             (machine.moneda === 'pesos' && machine.bill >= valuePesos) ||
             (machine.moneda === 'dolares' && machine.bill >= valueDolares)
         );
 
-        if (filteredMachines.length === 0) {
-            return res.status(400).json({ error: 'No hay máquinas que cumplan con los límites seleccionados' });
+        if (filteredMachines.length > 0) {
+            const insertFilteredValues = filteredMachines.map(({ machine, location, bill, zona, moneda }) =>
+                `('${machine}', '${location}', '${bill}', NOW(), '${zona}', '${moneda}')`
+            ).join(',');
+
+            const queryFiltrado = `INSERT INTO listado_filtrado (maquina, location, bill, fecha, zona, moneda) VALUES ${insertFilteredValues}`;
+            await pool.query(queryFiltrado);
         }
 
-        // Limpiar la tabla de configuración anterior
-        const [truncate] = await pool.query('TRUNCATE listado');
-
-        const insertValues = filteredMachines.map(({ machine, location, bill, zona, moneda }) =>
-            `('${machine}', '${location}', '${bill}', NOW(), '${zona}', '${moneda}')`
-        ).join(',');
-
-        const query = `INSERT INTO listado (maquina, location, bill, fecha, zona, moneda) VALUES ${insertValues}`;
-        await pool.query(query);
-
-        console.log('Máquinas filtradas insertadas');
+        console.log('Lista completa de máquinas insertada y máquinas filtradas guardadas');
 
         // Emitir la tabla actualizada al frontend
-        const [updatedTable] = await pool.query('SELECT * FROM `listado` ORDER BY location ASC');
+        const [updatedTable] = await pool.query('SELECT * FROM listado ORDER BY location ASC');
         io.emit('tableUpdate', updatedTable);
 
         return res.json('ok');
@@ -51,6 +57,8 @@ export const postList = async (req, res) => {
         res.status(500).json({ error: 'Error al insertar la lista de máquinas' });
     }
 };
+
+
 
 
 export const postConfig = async (req, res) => {
@@ -101,9 +109,10 @@ export const getResumen = async (req, res) => {
 };
 
 export const getInfo = async (req, res) => {
+
     const { maquina } = req.params;
 
-    console.log('getinfo');
+    // console.log(maquina);
     
 
     try {
@@ -124,6 +133,9 @@ export const getInfo = async (req, res) => {
                 console.error('Error ejecutando la query de listado filtrada por location:', error);
                 throw error;
             }
+
+            console.log('listado', listado);
+            
 
             // Filtrar las máquinas según los límites
             for (let i = 0; i < listado.length; i++) {
@@ -155,7 +167,7 @@ export const getInfo = async (req, res) => {
             // Devolver el listado filtrado
             res.json(listadoFinal);
         } else {
-            res.json('N');
+            res.json([]); // Devolver un array vacío
         }
     } catch (error) {
         console.error('Error al obtener la información:', error);
@@ -172,17 +184,24 @@ export const postSelect = async (req, res) => {
 
         // Actualizar la base de datos con la información de la extracción
         await pool.query(
-            'UPDATE listado SET `finalizado`=?, `asistente1`=?, `asistente2`=?, `comentario`=? WHERE `maquina` = ?',
+            'UPDATE listado_filtrado SET `finalizado`=?, `asistente1`=?, `asistente2`=?, `comentario`=? WHERE `maquina` = ?',
             [finalizado, asistente1, asistente2, comentario, maquina]
         );
 
         // Emitir la tabla actualizada a los clientes conectados
-        const [updatedTable] = await pool.query('SELECT * FROM `listado` ORDER BY location ASC');
+        const [updatedTable] = await pool.query('SELECT * FROM `listado_filtrado` ORDER BY location ASC');
         io.emit('tableUpdate', updatedTable);
+
+        // Actualizar la tabla listado con el estado de la extracción
+        await pool.query(
+            'UPDATE listado SET `finalizado`=? WHERE `maquina` = ?',
+            [finalizado, maquina]
+        );
+
 
         // Verificar si todas las máquinas en la zona han sido extraídas o marcadas como pendientes
         const [result] = await pool.query(
-            'SELECT COUNT(*) AS maquinasPendientes FROM listado WHERE zona = ? AND (finalizado IS NULL OR finalizado != "Completa" AND finalizado != "Pendiente")',
+            'SELECT COUNT(*) AS maquinasPendientes FROM listado_filtrado WHERE zona = ? AND (finalizado IS NULL OR finalizado != "Completa" AND finalizado != "Pendiente")',
             [zona]
         );
 
@@ -192,7 +211,7 @@ export const postSelect = async (req, res) => {
 
              // Verificar si todas las máquinas han sido extraídas o marcadas como pendientes (para el reporte general a técnicos)
         const [generalResult] = await pool.query(
-            'SELECT COUNT(*) AS maquinasPendientes FROM listado WHERE finalizado IS NULL OR finalizado NOT IN ("Completa", "Pendiente")'
+            'SELECT COUNT(*) AS maquinasPendientes FROM listado_filtrado WHERE finalizado IS NULL OR finalizado NOT IN ("Completa", "Pendiente")'
         );
 
         if (generalResult[0].maquinasPendientes === 0) {
@@ -214,7 +233,7 @@ const generarYEnviarReporteZona = async (zona) => {
     
     try {
         // Obtener todas las máquinas COMPLETAS de la zona con su detalle
-        const [result] = await pool.query('SELECT fecha, maquina, location, bill FROM listado WHERE zona = ? AND finalizado = "Completa"', [zona]);
+        const [result] = await pool.query('SELECT fecha, maquina, location, bill FROM listado_filtrado WHERE zona = ? AND finalizado = "Completa"', [zona]);
 
         if (result.length === 0) {
             console.log('No hay máquinas completas en la zona especificada.');
@@ -326,7 +345,7 @@ export const generarYEnviarReporte = async (req, res) => {
     
     try {
         // Obtener las máquinas con comentarios desde la base de datos
-        let [result] = await pool.query('SELECT fecha, maquina, location, comentario, finalizado FROM `listado` WHERE comentario IS NOT NULL AND comentario != ""');
+        let [result] = await pool.query('SELECT fecha, maquina, location, comentario, finalizado FROM `listado_filtrado` WHERE comentario IS NOT NULL AND comentario != ""');
 
         if (result.length === 0) {
             console.log('No hay máquinas con comentarios para generar el reporte.');
@@ -449,19 +468,25 @@ const enviarCorreoReporte = async (filePath, tipoReporte) => {
             'gcarmona@palermo.com.ar'
         ];
 
+        const destinatarioPrueba = [
+            'dargonz@palermo.com.ar'
+        ]
+
         // Configurar el asunto dependiendo del tipo de reporte
         const asunto = tipoReporte === 'zona' ? 'Reporte de Extracciones por Zona' : 'Reporte de Extracciones de Máquinas Técnica';
 
         // Seleccionar destinatarios según el tipo de reporte
-        let destinatarios;
-        if (tipoReporte === 'tecnica') {
-            destinatarios = destinatariosTecnica;
-        } else if (tipoReporte === 'zona') {
-            destinatarios = destinatariosZonas;
-        } else {
-            console.error('Tipo de reporte no válido:', tipoReporte);
-            return; // Salir de la función si el tipo de reporte no es válido
-        }
+        // let destinatarios;
+        // if (tipoReporte === 'tecnica') {
+        //     destinatarios = destinatariosTecnica;
+        // } else if (tipoReporte === 'zona') {
+        //     destinatarios = destinatariosZonas;
+        // } else {
+        //     console.error('Tipo de reporte no válido:', tipoReporte);
+        //     return; // Salir de la función si el tipo de reporte no es válido
+        // }
+
+        let destinatarios = destinatarioPrueba;
 
         // Configurar el transporte del correo usando Hostinger
         const transporter = nodemailer.createTransport({

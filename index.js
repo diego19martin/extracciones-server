@@ -6,12 +6,20 @@ import extraccionesRoutes from "./routes/extracciones.routes.js";
 
 const app = express();
 const server = createServer(app);
+
 const io = new Server(server, {
   cors: {
     origin: "https://extracciones-client-conversion.vercel.app",
     methods: ["GET", "POST"]
   }
 });
+
+// const io = new Server(server, {
+//   cors: {
+//     origin: ["http://localhost:3000", "http://localhost:4000"],
+//     methods: ["GET", "POST"]
+//   }
+// });
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
