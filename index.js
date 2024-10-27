@@ -1,52 +1,54 @@
 import express from "express";
 import cors from "cors";
+import dotenv from 'dotenv';
 import { createServer } from "http";
 import { Server } from "socket.io";
 import extraccionesRoutes from "./routes/extracciones.routes.js";
 import cron from 'node-cron';
-import { generarReporteResumen, generarYEnviarReporte } from './controllers/extracciones.controller.js'; // Importa tu función
+import { generarReporteResumen, generarYEnviarReporte } from './controllers/extracciones.controller.js';
 
+dotenv.config();  // Cargar las variables de entorno desde el archivo .env
 
 const app = express();
-const server = createServer(app);
-
+const server = createServer(app);  // Usar http.createServer para socket.io
 const io = new Server(server, {
   cors: {
-    origin: "https://extracciones-client-conversion.vercel.app",
+    origin: '*',  // Permitir todas las conexiones de origen por ahora
     methods: ["GET", "POST"]
   }
 });
 
-// const io = new Server(server, {
-//   cors: {
-//     origin: ["http://localhost:3000", "http://localhost:4000"],
-//     methods: ["GET", "POST"]
-//   }
-// });
-
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use((req, res, next) => {
-  req.io = io;
-  next();
-});
-app.use(extraccionesRoutes);
-
-const PORT = process.env.PORT || 4000;
-server.listen(PORT, () => {
-  console.log(`Our app is running on port ${PORT}`);
+// Escuchar en el puerto especificado por Heroku o por defecto en 4000
+server.listen(process.env.PORT || 4000, () => {
+  console.log(`Server running on port ${process.env.PORT || 4000}`);
 });
 
-// Programa la tarea para las 10 AM todos los días
-cron.schedule('0 14 * * *', () => {
-  console.log('Generando y enviando reporte diario a las 10 AM');
-  generarReporteResumen(); // Llama a la función que genera y envía el reporte
-});
+// Definir el origen según el entorno
+const allowedOrigins = process.env.NODE_ENV === 'production'
+  ? process.env.API_URL_HEROKU  // En producción (Heroku)
+  : process.env.API_URL_LOCAL;  // En desarrollo local
 
-// Programa la tarea para las 14:00 UTC (que es 11:00 AM en Buenos Aires)
-cron.schedule('0 14 * * *', () => {
-  console.log('Generando y enviando reporte técnico a las 11:00 AM Buenos Aires (14:00 UTC)');
-  generarYEnviarReporte('tecnica'); // Asegúrate de pasar el tipo de reporte correcto
-});
+// Configurar CORS para permitir localhost:3000
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' ? process.env.API_URL_HEROKU : 'http://localhost:3000',  // Permitir localhost en desarrollo
+  methods: ["GET", "POST"],
+  credentials: true,  // Esto permite enviar cookies si es necesario
+}));
 
+app.use(express.json({ limit: '100mb' }));
+app.use('/api', extraccionesRoutes);
+
+
+// Exportar el objeto io para su uso en otros módulos
 export { io };
+
+// Programar cron jobs
+cron.schedule('0 14 * * *', () => {
+  console.log('Generando y enviando reporte diario a las 10 AM Buenos Aires (13:00 UTC)');
+  generarReporteResumen();
+});
+
+cron.schedule('0 14 * * *', () => {
+  console.log('Generando y enviando reporte técnico a las 11 AM Buenos Aires (14:00 UTC)');
+  generarYEnviarReporte('tecnica');
+});

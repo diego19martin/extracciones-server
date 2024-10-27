@@ -22,6 +22,9 @@ export const postList = async (req, res) => {
         await pool.query('TRUNCATE listado');
         await pool.query('TRUNCATE listado_filtrado');
 
+        console.log(machines);
+        
+
         // Insertar todas las máquinas en la tabla "listado"
         const insertValues = machines.map(({ machine, location, bill, zona, moneda }) =>
             `('${machine}', '${location}', '${bill}', NOW(), '${zona}', '${moneda}')`
@@ -48,8 +51,10 @@ export const postList = async (req, res) => {
         console.log('Lista completa de máquinas insertada y máquinas filtradas guardadas');
 
         // Emitir la tabla actualizada al frontend
-        const [updatedTable] = await pool.query('SELECT * FROM listado ORDER BY location ASC');
-        io.emit('tableUpdate', updatedTable);
+        const [updatedTable] = await pool.query('SELECT * FROM listado_filtrado ORDER BY location ASC');
+        console.log(updatedTable);
+        
+        // io.emit('tableUpdate', updatedTable);
 
         return res.json('ok');
     } catch (error) {
@@ -118,6 +123,9 @@ export const getInfo = async (req, res) => {
     try {
         const [result] = await pool.query('SELECT * FROM `listado` WHERE maquina = ?', [maquina]);
         const [limite] = await pool.query('SELECT * FROM `config`');
+
+        console.log('result', result);
+        
 
         if (result.length > 0) {
             const loc = result[0].location;
@@ -256,8 +264,8 @@ const generarYEnviarReporteZona = async (zona) => {
             fgColor: { argb: 'FFB6C1' } // Color de fondo del título
         };
 
-        worksheet.addRow([]);
-        worksheet.addRow([]);
+        worksheet.addRow([]); // Fila vacía
+        worksheet.addRow([]); // Otra fila vacía
 
         // Agregar encabezado
         const headerRow = worksheet.addRow(['Fecha', 'Máquina', 'Ubicación', 'Dinero Extraído']);
@@ -268,8 +276,6 @@ const generarYEnviarReporteZona = async (zona) => {
             fgColor: { argb: '4682B4' } // Color azul para encabezados
         };
         headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
-
-        // Aplicar bordes a la fila del encabezado
         headerRow.eachCell((cell) => {
             cell.border = {
                 top: { style: 'thin' },
@@ -283,7 +289,7 @@ const generarYEnviarReporteZona = async (zona) => {
         result.forEach((item) => {
             const row = worksheet.addRow([item.fecha, item.maquina, item.location, item.bill]);
             row.eachCell((cell) => {
-                cell.alignment = { vertical: 'middle', horizontal: 'center' }; // Centrar contenido
+                cell.alignment = { vertical: 'middle', horizontal: 'center' };
                 cell.border = {
                     top: { style: 'thin' },
                     left: { style: 'thin' },
@@ -291,15 +297,19 @@ const generarYEnviarReporteZona = async (zona) => {
                     right: { style: 'thin' },
                 };
             });
+
+            // Aplicar formato de moneda a la columna de "Dinero Extraído"
+            row.getCell(4).numFmt = '"$"#,##0.00'; // Formato monetario
         });
 
         // Agregar un resumen al final del reporte
-        worksheet.addRow([]);
+        worksheet.addRow([]); // Fila vacía
 
         const totalExtraido = result.reduce((total, item) => total + item.bill, 0);
         const summaryRow = worksheet.addRow(['Total Extraído', '', '', totalExtraido]);
         summaryRow.getCell(1).font = { bold: true };
         summaryRow.getCell(4).font = { bold: true };
+        summaryRow.getCell(4).numFmt = '"$"#,##0.00'; // Aplicar formato de moneda al total
         summaryRow.eachCell((cell) => {
             cell.alignment = { vertical: 'middle', horizontal: 'center' };
             cell.border = {
@@ -310,16 +320,16 @@ const generarYEnviarReporteZona = async (zona) => {
             };
         });
 
-        // Aplicar formato a las columnas (fijar ancho)
+        // Ajustar ancho de las columnas
         worksheet.columns.forEach((column, index) => {
-            if (index === 3) { // Columna "Dinero Extraído"
+            if (index === 3) {
                 column.width = 18; // Más ancho para el monto
             } else {
                 column.width = 22; // Ancho para otras columnas
             }
         });
 
-        // Guardar el archivo con un nombre específico para la zona
+        // Guardar el archivo Excel
         const reportDir = path.join(__dirname, '../reportes');
         if (!fs.existsSync(reportDir)) {
             fs.mkdirSync(reportDir, { recursive: true });
@@ -337,6 +347,7 @@ const generarYEnviarReporteZona = async (zona) => {
         console.error('Error al generar y enviar el reporte de zona:', error);
     }
 };
+
 
 
 
@@ -584,89 +595,89 @@ export const generarReporteResumen = async () => {
 
 
 
-const enviarCorreoReporte = async (filePath, tipoReporte) => {
-    try {
-        // Listas de destinatarios
-        const destinatariosTecnica = [
-            'dargonz@palermo.com.ar',
-            'mholley@palermo.com.ar',
-            'sespinoza@palermo.com.ar',
-            'jmaldonado@palermo.com.ar',
-            'jzuazo@palermo.com.ar',
-            'gaguiar@palermo.com.ar',
-            'fbernardo@palermo.com.ar',
-            'fdotti@palermo.com.ar'
-        ];
+// const enviarCorreoReporte = async (filePath, tipoReporte) => {
+//     try {
+//         // Listas de destinatarios
+//         const destinatariosTecnica = [
+//             'dargonz@palermo.com.ar',
+//             'mholley@palermo.com.ar',
+//             'sespinoza@palermo.com.ar',
+//             'jmaldonado@palermo.com.ar',
+//             'jzuazo@palermo.com.ar',
+//             'gaguiar@palermo.com.ar',
+//             'fbernardo@palermo.com.ar',
+//             'fdotti@palermo.com.ar'
+//         ];
 
-        const destinatariosZonas = [
-            'dargonz@palermo.com.ar',
-            'mfernandez@palermo.com.ar',
-            'lvega@palermo.com.ar',
-            'vbove@palermo.com.ar',
-            'gcarmona@palermo.com.ar'
-        ];
+//         const destinatariosZonas = [
+//             'dargonz@palermo.com.ar',
+//             'mfernandez@palermo.com.ar',
+//             'lvega@palermo.com.ar',
+//             'vbove@palermo.com.ar',
+//             'gcarmona@palermo.com.ar'
+//         ];
 
-        const destinatariosDiario = [
-            'dargonz@palermo.com.ar',
-            'jzuazo@palermo.com.ar',
-            'gaguiar@palermo.com.ar',
-            'fbernardo@palermo.com.ar',
-            'fdotti@palermo.com.ar',
-            'crodriguez@palermo.com.ar'
-        ];
+//         const destinatariosDiario = [
+//             'dargonz@palermo.com.ar',
+//             'jzuazo@palermo.com.ar',
+//             'gaguiar@palermo.com.ar',
+//             'fbernardo@palermo.com.ar',
+//             'fdotti@palermo.com.ar',
+//             'crodriguez@palermo.com.ar'
+//         ];
 
-        // Seleccionar los destinatarios según el tipo de reporte
-        let destinatarios;
-        if (tipoReporte === 'tecnica') {
-            destinatarios = destinatariosTecnica;
-        } else if (tipoReporte === 'zona') {
-            destinatarios = destinatariosZonas;
-        } else if (tipoReporte === 'diario') {
-            destinatarios = destinatariosDiario;
-        } else {
-            console.error('Tipo de reporte no válido:', tipoReporte);
-            return; // Salir de la función si el tipo de reporte no es válido
-        }
+//         // Seleccionar los destinatarios según el tipo de reporte
+//         let destinatarios;
+//         if (tipoReporte === 'tecnica') {
+//             destinatarios = destinatariosTecnica;
+//         } else if (tipoReporte === 'zona') {
+//             destinatarios = destinatariosZonas;
+//         } else if (tipoReporte === 'diario') {
+//             destinatarios = destinatariosDiario;
+//         } else {
+//             console.error('Tipo de reporte no válido:', tipoReporte);
+//             return; // Salir de la función si el tipo de reporte no es válido
+//         }
 
-        // Configurar el transporte del correo usando Hostinger
-        const transporter = nodemailer.createTransport({
-            host: 'smtp.hostinger.com', // Servidor SMTP de Hostinger
-            port: 587, // Puerto SMTP (normalmente 587 o 465 para SSL)
-            secure: false, // true si se usa el puerto 465 para SSL
-            auth: {
-                user: 'reportes@dadesarrollos.com', // Tu email de Hostinger
-                pass: 'Palermo2024**' // Tu contraseña o contraseña de aplicación
-            },
-        });
+//         // Configurar el transporte del correo usando Hostinger
+//         const transporter = nodemailer.createTransport({
+//             host: 'smtp.hostinger.com', // Servidor SMTP de Hostinger
+//             port: 587, // Puerto SMTP (normalmente 587 o 465 para SSL)
+//             secure: false, // true si se usa el puerto 465 para SSL
+//             auth: {
+//                 user: 'reportes@dadesarrollos.com', // Tu email de Hostinger
+//                 pass: 'Palermo2024**' // Tu contraseña o contraseña de aplicación
+//             },
+//         });
 
-        // Configurar el asunto dependiendo del tipo de reporte
-        const asunto = tipoReporte === 'zona' 
-            ? 'Reporte de Extracciones por Zona' 
-            : tipoReporte === 'tecnica'
-            ? 'Reporte de Extracciones Técnica'
-            : 'Reporte Diario de Extracciones';
+//         // Configurar el asunto dependiendo del tipo de reporte
+//         const asunto = tipoReporte === 'zona' 
+//             ? 'Reporte de Extracciones por Zona' 
+//             : tipoReporte === 'tecnica'
+//             ? 'Reporte de Extracciones Técnica'
+//             : 'Reporte Diario de Extracciones';
 
-        // Configurar los detalles del correo
-        const mailOptions = {
-            from: 'reportes@dadesarrollos.com', // Dirección de correo de origen
-            to: destinatarios.join(','), // Convertir la lista de destinatarios a una cadena separada por comas
-            subject: asunto,
-            text: 'Adjunto encontrarás el reporte de extracciones.',
-            attachments: [
-                {
-                    filename: path.basename(filePath),
-                    path: filePath,
-                },
-            ],
-        };
+//         // Configurar los detalles del correo
+//         const mailOptions = {
+//             from: 'reportes@dadesarrollos.com', // Dirección de correo de origen
+//             to: destinatarios.join(','), // Convertir la lista de destinatarios a una cadena separada por comas
+//             subject: asunto,
+//             text: 'Adjunto encontrarás el reporte de extracciones.',
+//             attachments: [
+//                 {
+//                     filename: path.basename(filePath),
+//                     path: filePath,
+//                 },
+//             ],
+//         };
 
-        // Enviar el correo
-        await transporter.sendMail(mailOptions);
-        console.log(`Correo enviado a: ${destinatarios.join(', ')}`);
-    } catch (error) {
-        console.error('Error al enviar el correo:', error);
-    }
-};
+//         // Enviar el correo
+//         await transporter.sendMail(mailOptions);
+//         console.log(`Correo enviado a: ${destinatarios.join(', ')}`);
+//     } catch (error) {
+//         console.error('Error al enviar el correo:', error);
+//     }
+// };
 
 
 export const getEmployees = async (req, res) => {
