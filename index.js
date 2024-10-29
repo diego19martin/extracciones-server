@@ -29,12 +29,8 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
   : process.env.API_URL_LOCAL;  // En desarrollo local
 
 // Configurar CORS para permitir localhost:3000
-app.use(cors({
-  origin: process.env.NODE_ENV === 'production' ? process.env.API_URL_HEROKU : 'http://localhost:3000',  // Permitir localhost en desarrollo
-  methods: ["GET", "POST"],
-  credentials: true,  // Esto permite enviar cookies si es necesario
-}));
-
+app.use(cors)
+  
 app.use(express.json({ limit: '100mb' }));
 app.use('/api', extraccionesRoutes);
 
