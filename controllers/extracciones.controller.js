@@ -595,89 +595,89 @@ export const generarReporteResumen = async () => {
 
 
 
-// const enviarCorreoReporte = async (filePath, tipoReporte) => {
-//     try {
-//         // Listas de destinatarios
-//         const destinatariosTecnica = [
-//             'dargonz@palermo.com.ar',
-//             'mholley@palermo.com.ar',
-//             'sespinoza@palermo.com.ar',
-//             'jmaldonado@palermo.com.ar',
-//             'jzuazo@palermo.com.ar',
-//             'gaguiar@palermo.com.ar',
-//             'fbernardo@palermo.com.ar',
-//             'fdotti@palermo.com.ar'
-//         ];
+const enviarCorreoReporte = async (filePath, tipoReporte) => {
+    try {
+        // Listas de destinatarios
+        const destinatariosTecnica = [
+            'dargonz@palermo.com.ar',
+            'mholley@palermo.com.ar',
+            'sespinoza@palermo.com.ar',
+            'jmaldonado@palermo.com.ar',
+            'jzuazo@palermo.com.ar',
+            'gaguiar@palermo.com.ar',
+            'fbernardo@palermo.com.ar',
+            'fdotti@palermo.com.ar'
+        ];
 
-//         const destinatariosZonas = [
-//             'dargonz@palermo.com.ar',
-//             'mfernandez@palermo.com.ar',
-//             'lvega@palermo.com.ar',
-//             'vbove@palermo.com.ar',
-//             'gcarmona@palermo.com.ar'
-//         ];
+        const destinatariosZonas = [
+            'dargonz@palermo.com.ar',
+            'mfernandez@palermo.com.ar',
+            'lvega@palermo.com.ar',
+            'vbove@palermo.com.ar',
+            'gcarmona@palermo.com.ar'
+        ];
 
-//         const destinatariosDiario = [
-//             'dargonz@palermo.com.ar',
-//             'jzuazo@palermo.com.ar',
-//             'gaguiar@palermo.com.ar',
-//             'fbernardo@palermo.com.ar',
-//             'fdotti@palermo.com.ar',
-//             'crodriguez@palermo.com.ar'
-//         ];
+        const destinatariosDiario = [
+            'dargonz@palermo.com.ar',
+            'jzuazo@palermo.com.ar',
+            'gaguiar@palermo.com.ar',
+            'fbernardo@palermo.com.ar',
+            'fdotti@palermo.com.ar',
+            'crodriguez@palermo.com.ar'
+        ];
 
-//         // Seleccionar los destinatarios según el tipo de reporte
-//         let destinatarios;
-//         if (tipoReporte === 'tecnica') {
-//             destinatarios = destinatariosTecnica;
-//         } else if (tipoReporte === 'zona') {
-//             destinatarios = destinatariosZonas;
-//         } else if (tipoReporte === 'diario') {
-//             destinatarios = destinatariosDiario;
-//         } else {
-//             console.error('Tipo de reporte no válido:', tipoReporte);
-//             return; // Salir de la función si el tipo de reporte no es válido
-//         }
+        // Seleccionar los destinatarios según el tipo de reporte
+        let destinatarios;
+        if (tipoReporte === 'tecnica') {
+            destinatarios = destinatariosTecnica;
+        } else if (tipoReporte === 'zona') {
+            destinatarios = destinatariosZonas;
+        } else if (tipoReporte === 'diario') {
+            destinatarios = destinatariosDiario;
+        } else {
+            console.error('Tipo de reporte no válido:', tipoReporte);
+            return; // Salir de la función si el tipo de reporte no es válido
+        }
 
-//         // Configurar el transporte del correo usando Hostinger
-//         const transporter = nodemailer.createTransport({
-//             host: 'smtp.hostinger.com', // Servidor SMTP de Hostinger
-//             port: 587, // Puerto SMTP (normalmente 587 o 465 para SSL)
-//             secure: false, // true si se usa el puerto 465 para SSL
-//             auth: {
-//                 user: 'reportes@dadesarrollos.com', // Tu email de Hostinger
-//                 pass: 'Palermo2024**' // Tu contraseña o contraseña de aplicación
-//             },
-//         });
+        // Configurar el transporte del correo usando Hostinger
+        const transporter = nodemailer.createTransport({
+            host: 'smtp.hostinger.com', // Servidor SMTP de Hostinger
+            port: 587, // Puerto SMTP (normalmente 587 o 465 para SSL)
+            secure: false, // true si se usa el puerto 465 para SSL
+            auth: {
+                user: 'reportes@dadesarrollos.com', // Tu email de Hostinger
+                pass: 'Palermo2024**' // Tu contraseña o contraseña de aplicación
+            },
+        });
 
-//         // Configurar el asunto dependiendo del tipo de reporte
-//         const asunto = tipoReporte === 'zona' 
-//             ? 'Reporte de Extracciones por Zona' 
-//             : tipoReporte === 'tecnica'
-//             ? 'Reporte de Extracciones Técnica'
-//             : 'Reporte Diario de Extracciones';
+        // Configurar el asunto dependiendo del tipo de reporte
+        const asunto = tipoReporte === 'zona' 
+            ? 'Reporte de Extracciones por Zona' 
+            : tipoReporte === 'tecnica'
+            ? 'Reporte de Extracciones Técnica'
+            : 'Reporte Diario de Extracciones';
 
-//         // Configurar los detalles del correo
-//         const mailOptions = {
-//             from: 'reportes@dadesarrollos.com', // Dirección de correo de origen
-//             to: destinatarios.join(','), // Convertir la lista de destinatarios a una cadena separada por comas
-//             subject: asunto,
-//             text: 'Adjunto encontrarás el reporte de extracciones.',
-//             attachments: [
-//                 {
-//                     filename: path.basename(filePath),
-//                     path: filePath,
-//                 },
-//             ],
-//         };
+        // Configurar los detalles del correo
+        const mailOptions = {
+            from: 'reportes@dadesarrollos.com', // Dirección de correo de origen
+            to: destinatarios.join(','), // Convertir la lista de destinatarios a una cadena separada por comas
+            subject: asunto,
+            text: 'Adjunto encontrarás el reporte de extracciones.',
+            attachments: [
+                {
+                    filename: path.basename(filePath),
+                    path: filePath,
+                },
+            ],
+        };
 
-//         // Enviar el correo
-//         await transporter.sendMail(mailOptions);
-//         console.log(`Correo enviado a: ${destinatarios.join(', ')}`);
-//     } catch (error) {
-//         console.error('Error al enviar el correo:', error);
-//     }
-// };
+        // Enviar el correo
+        await transporter.sendMail(mailOptions);
+        console.log(`Correo enviado a: ${destinatarios.join(', ')}`);
+    } catch (error) {
+        console.error('Error al enviar el correo:', error);
+    }
+};
 
 
 export const getEmployees = async (req, res) => {
