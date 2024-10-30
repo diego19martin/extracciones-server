@@ -13,7 +13,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 
-
 export const postList = async (req, res) => {
     try {
         const { machines, valuePesos, valueDolares } = req.body; // Recibir máquinas y límites desde el cuerpo de la solicitud
@@ -62,8 +61,6 @@ export const postList = async (req, res) => {
         res.status(500).json({ error: 'Error al insertar la lista de máquinas' });
     }
 };
-
-
 
 
 export const postConfig = async (req, res) => {
@@ -182,8 +179,6 @@ export const getInfo = async (req, res) => {
         res.status(500).json({ error: 'Error al obtener la información' });
     }
 };
-
-
 
 
 export const postSelect = async (req, res) => {
@@ -347,8 +342,6 @@ const generarYEnviarReporteZona = async (zona) => {
         console.error('Error al generar y enviar el reporte de zona:', error);
     }
 };
-
-
 
 
 export const generarYEnviarReporte = async (req, res) => {
@@ -593,8 +586,6 @@ export const generarReporteResumen = async () => {
 
 
 
-
-
 const enviarCorreoReporte = async (filePath, tipoReporte) => {
     try {
         // Listas de destinatarios
@@ -628,16 +619,18 @@ const enviarCorreoReporte = async (filePath, tipoReporte) => {
 
         // Seleccionar los destinatarios según el tipo de reporte
         let destinatarios;
-        if (tipoReporte === 'tecnica') {
-            destinatarios = destinatariosTecnica;
-        } else if (tipoReporte === 'zona') {
-            destinatarios = destinatariosZonas;
-        } else if (tipoReporte === 'diario') {
-            destinatarios = destinatariosDiario;
-        } else {
-            console.error('Tipo de reporte no válido:', tipoReporte);
-            return; // Salir de la función si el tipo de reporte no es válido
-        }
+        // if (tipoReporte === 'tecnica') {
+        //     destinatarios = destinatariosTecnica;
+        // } else if (tipoReporte === 'zona') {
+        //     destinatarios = destinatariosZonas;
+        // } else if (tipoReporte === 'diario') {
+        //     destinatarios = destinatariosDiario;
+        // } else {
+        //     console.error('Tipo de reporte no válido:', tipoReporte);
+        //     return; // Salir de la función si el tipo de reporte no es válido
+        // }
+
+        destinatarios = 'dargonz@palermo.com.ar'
 
         // Configurar el transporte del correo usando Hostinger
         const transporter = nodemailer.createTransport({

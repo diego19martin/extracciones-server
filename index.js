@@ -55,3 +55,10 @@ cron.schedule('0 14 * * *', () => {
   console.log('Generando y enviando reporte técnico a las 11 AM Buenos Aires (14:00 UTC)');
   generarYEnviarReporte('tecnica');
 });
+
+//pruebas
+
+cron.schedule('17 20 * * *', () => {
+  console.log('Generando y enviando reporte diario a las 10 AM Buenos Aires (13:00 UTC)');
+  generarReporteResumen();
+});
