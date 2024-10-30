@@ -6,6 +6,7 @@ import { Server } from "socket.io";
 import extraccionesRoutes from "./routes/extracciones.routes.js";
 import cron from 'node-cron';
 import { generarReporteResumen, generarYEnviarReporte } from './controllers/extracciones.controller.js';
+import bodyParser from 'body-parser';
 
 dotenv.config();  // Cargar las variables de entorno desde el archivo .env
 
@@ -37,7 +38,9 @@ app.use(cors({
 
 
   
-app.use(express.json({ limit: '100mb' }));
+// Increase payload size limit
+app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 app.use('/api', extraccionesRoutes);
 
 
