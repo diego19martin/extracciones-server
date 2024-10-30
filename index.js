@@ -58,7 +58,7 @@ cron.schedule('0 14 * * *', () => {
 
 //pruebas
 
-cron.schedule('20 23 * * *', () => {
-  console.log('Generando y enviando reporte diario a las 10 AM Buenos Aires (13:00 UTC)');
-  generarReporteResumen();
-});
+// cron.schedule('25 17 * * *', () => {
+//   console.log('Generando y enviando reporte diario a las 10 AM Buenos Aires (13:00 UTC)');
+//   generarReporteResumen();
+// });
