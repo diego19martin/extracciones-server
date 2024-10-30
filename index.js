@@ -29,7 +29,13 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
   : process.env.API_URL_LOCAL;  // En desarrollo local
 
 // Configurar CORS para permitir localhost:3000
-app.use(cors)
+const cors = require('cors');
+const corsOptions = {
+    origin: ['https://extracciones-client-conversion.vercel.app', 'http://localhost:3000'],
+    optionsSuccessStatus: 200,
+};
+app.use(cors(corsOptions));
+
   
 app.use(express.json({ limit: '100mb' }));
 app.use('/api', extraccionesRoutes);
