@@ -30,16 +30,11 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
   : process.env.API_URL_LOCAL;  // En desarrollo local
 
 // Configurar CORS para permitir localhost:3000
-
-const corsOptions = {
-  origin: ['https://extracciones-client-conversion.vercel.app', 'http://localhost:3000'],  // Agrega aquí los orígenes permitidos
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true,  // Si estás usando cookies o autenticación basada en sesiones
-  optionsSuccessStatus: 200  // Para navegadores antiguos que necesitan este estado
-};
-
-app.use(cors(corsOptions));  // Habilitar CORS con las opciones
-
+app.use(cors({  
+  origin: '*', // Permitir el origen especificado
+  methods: ["GET", "POST"],
+  credentials: true  // Permitir el envío de cookies
+  }));
   
 // Increase payload size limit
 app.use(bodyParser.json({ limit: '50mb' }));
