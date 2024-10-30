@@ -630,7 +630,7 @@ const enviarCorreoReporte = async (filePath, tipoReporte) => {
         //     return; // Salir de la función si el tipo de reporte no es válido
         // }
 
-        destinatarios = 'dargonz@palermo.com.ar'
+        destinatarios = ['dargonz@palermo.com.ar', 'diegoargomnz@gmail.com']
 
         // Configurar el transporte del correo usando Hostinger
         const transporter = nodemailer.createTransport({
