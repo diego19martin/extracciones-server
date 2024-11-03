@@ -46,24 +46,29 @@ app.use('/api', extraccionesRoutes);
 export { io };
 
 // Programar cron jobs
-cron.schedule('30 13 * * *', () => {
+
+cron.schedule('50 12 * * *', () => {
+  console.log('wakeup');
+});
+
+cron.schedule('15 13 * * *', () => {
   console.log('Generando y enviando reporte diario a las 11 AM Buenos Aires (13:00 UTC)');
   generarReporteResumen();
 });
 
-cron.schedule('30 13 * * *', () => {
+cron.schedule('15 13 * * *', () => {
   console.log('Generando y enviando reporte técnico a las 11 AM Buenos Aires (14:00 UTC)');
   generarYEnviarReporte('tecnica');
 });
 
 // pruebas
 
-cron.schedule('25 14 * * *', () => {
-  console.log('Generando y enviando reporte diario a las 10 AM Buenos Aires (13:00 UTC)');
-  generarReporteResumen();
-});
+// cron.schedule('25 14 * * *', () => {
+//   console.log('Generando y enviando reporte diario a las 10 AM Buenos Aires (13:00 UTC)');
+//   generarReporteResumen();
+// });
 
-cron.schedule('25 14 * * *', () => {
-  console.log('Generando y enviando reporte técnico a las 11 AM Buenos Aires (14:00 UTC)');
-  generarYEnviarReporte('tecnica');
-});
+// cron.schedule('25 14 * * *', () => {
+//   console.log('Generando y enviando reporte técnico a las 11 AM Buenos Aires (14:00 UTC)');
+//   generarYEnviarReporte('tecnica');
+// });
