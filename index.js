@@ -58,12 +58,12 @@ cron.schedule('30 13 * * *', () => {
 
 // pruebas
 
-// cron.schedule('45 14 * * *', () => {
-//   console.log('Generando y enviando reporte diario a las 10 AM Buenos Aires (13:00 UTC)');
-//   generarReporteResumen();
-// });
+cron.schedule('25 14 * * *', () => {
+  console.log('Generando y enviando reporte diario a las 10 AM Buenos Aires (13:00 UTC)');
+  generarReporteResumen();
+});
 
-// cron.schedule('45 14 * * *', () => {
-//   console.log('Generando y enviando reporte técnico a las 11 AM Buenos Aires (14:00 UTC)');
-//   generarYEnviarReporte('tecnica');
-// });
+cron.schedule('25 14 * * *', () => {
+  console.log('Generando y enviando reporte técnico a las 11 AM Buenos Aires (14:00 UTC)');
+  generarYEnviarReporte('tecnica');
+});
