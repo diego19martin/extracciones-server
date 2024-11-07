@@ -47,7 +47,15 @@ export { io };
 
 // Programar cron jobs
 
+cron.schedule('30 12 * * *', () => {
+  console.log('wakeup');
+});
+
 cron.schedule('50 12 * * *', () => {
+  console.log('wakeup');
+});
+
+cron.schedule('00 13 * * *', () => {
   console.log('wakeup');
 });
 
@@ -63,12 +71,12 @@ cron.schedule('15 13 * * *', () => {
 
 // pruebas
 
-cron.schedule('05 15 * * *', () => {
-  console.log('Generando y enviando reporte diario a las 10 AM Buenos Aires (13:00 UTC)');
-  generarReporteResumen();
-});
+// cron.schedule('05 15 * * *', () => {
+//   console.log('Generando y enviando reporte diario a las 10 AM Buenos Aires (13:00 UTC)');
+//   generarReporteResumen();
+// });
 
-cron.schedule('05 15 * * *', () => {
-  console.log('Generando y enviando reporte técnico a las 11 AM Buenos Aires (14:00 UTC)');
-  generarYEnviarReporte('tecnica');
-});
+// cron.schedule('05 15 * * *', () => {
+//   console.log('Generando y enviando reporte técnico a las 11 AM Buenos Aires (14:00 UTC)');
+//   generarYEnviarReporte('tecnica');
+// });
