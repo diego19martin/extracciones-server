@@ -598,7 +598,8 @@ const enviarCorreoReporte = async (filePath, tipoReporte) => {
             'gaguiar@palermo.com.ar',
             'fbernardo@palermo.com.ar',
             'fdotti@palermo.com.ar',
-            'jefesjuego@palermo.com.ar'
+            'jefesjuego@palermo.com.ar',
+            'edariozzi@betfun.com.ar'
         ];
 
         const destinatariosZonas = [
@@ -615,7 +616,8 @@ const enviarCorreoReporte = async (filePath, tipoReporte) => {
             'gaguiar@palermo.com.ar',
             'fbernardo@palermo.com.ar',
             'fdotti@palermo.com.ar',
-            'crodriguez@palermo.com.ar'
+            'crodriguez@palermo.com.ar',
+            'edariozzi@palermo.com.ar',
         ];
 
         // Seleccionar los destinatarios según el tipo de reporte
