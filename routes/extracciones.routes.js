@@ -13,7 +13,9 @@ import {
     addEmployee,
     removeEmployee,
     uploadEmployees,
-    getEmpleados
+    getEmpleados,
+    getListadoFiltrado,
+    getConfig
 } from "../controllers/extracciones.controller.js";
 
 const router = Router();
@@ -25,6 +27,10 @@ router.post('/generarReporte', generarYEnviarReporte);
 router.post('/generarReporteDiario', generarReporteResumen);
 router.get('/getResumen', getResumen);
 router.get('/getInfo/:maquina', getInfo);
+
+router.get('/getListadoFiltrado', getListadoFiltrado);
+router.get('/getConfig', getConfig);
+
 
 router.get('/employees', getEmployees);
 router.post('/employees', addEmployee);

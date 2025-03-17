@@ -230,7 +230,33 @@ export const postSelect = async (req, res) => {
     }
 };
 
-// Modificación en la función generarYEnviarReporteZona
+export const getListadoFiltrado = async (req, res) => {
+    try {
+        const [result] = await pool.query('SELECT * FROM `listado_filtrado` ORDER BY location ASC');
+        console.log('Listado filtrado:', result);
+        
+        res.json(result);
+    } catch (error) {
+        console.error('Error al obtener el listado filtrado:', error);
+        res.status(500).json({ error: 'Error al obtener el listado filtrado' });
+    }
+  };
+  
+  export const getConfig = async (req, res) => {
+    try {
+        const [result] = await pool.query('SELECT * FROM `config` ORDER BY id DESC LIMIT 1');
+        if (result.length > 0) {
+            res.json(result[0]);
+        } else {
+            res.json({ limite: 0, limiteDolar: 1 });
+        }
+    } catch (error) {
+        console.error('Error al obtener la configuración:', error);
+        res.status(500).json({ error: 'Error al obtener la configuración' });
+    }
+  };
+
+
 const generarYEnviarReporteZona = async (zona) => {
     console.log('Generando reporte para la zona', zona);
     
