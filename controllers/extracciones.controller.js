@@ -452,7 +452,7 @@ export const generarYEnviarReporte = async (req, res) => {
 };
 
 
-export const generarReporteResumen = async () => {
+export const generarReporteResumen = async (req, res) => {
     console.log('Generando reporte diario...');
 
     try {
@@ -579,8 +579,16 @@ export const generarReporteResumen = async () => {
         // Enviar el reporte por correo
         await enviarCorreoReporte(reportPath, 'diario');
 
+        // Responder al cliente si existe una respuesta HTTP
+        if (res) {
+            res.json({ message: 'Reporte diario generado y enviado correctamente' });
+        }
+
     } catch (error) {
         console.error('Error al generar o enviar el reporte diario:', error);
+        if (res) {
+            res.status(500).json({ error: 'Error al generar el reporte diario' });
+        }
     }
 };
 
