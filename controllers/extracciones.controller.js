@@ -379,6 +379,9 @@ export const generarYEnviarReporte = async (req, res) => {
 
         if (result.length === 0) {
             console.log('No hay máquinas con comentarios para generar el reporte.');
+            if (res) {
+                return res.json({ message: 'No hay datos para generar el reporte', status: 'warning' });
+            }
             return;
         }
 
@@ -463,20 +466,27 @@ export const generarYEnviarReporte = async (req, res) => {
         console.log('Reporte generado exitosamente:', reportFilePath);
 
         // Enviar el correo con el reporte adjunto
-        await enviarCorreoReporte(reportFilePath, 'tecnica');
+        const emailEnviado = await enviarCorreoReporte(reportFilePath, 'tecnica');
 
         if (res) {
-            res.json({ message: 'Reporte generado correctamente' }); // Solo enviar la respuesta si existe `res`
+            if (emailEnviado) {
+                res.json({ message: 'Reporte generado y enviado correctamente', status: 'success' });
+            } else {
+                res.json({ message: 'Reporte generado correctamente pero hubo problemas al enviar el correo. El administrador revisará esta situación.', status: 'warning' });
+            }
         }
 
     } catch (error) {
         console.error('Error al generar y enviar el reporte:', error);
         if (res) {
-            res.status(500).json({ error: 'Error al generar el reporte' });
+            res.status(500).json({ 
+                error: 'Error al generar el reporte', 
+                message: 'Ocurrió un problema al generar el reporte. Por favor intente más tarde o contacte al administrador.',
+                status: 'error'
+            });
         }
     }
 };
-
 
 export const generarReporteResumen = async (req, res) => {
     console.log('Generando reporte diario...');
@@ -486,6 +496,9 @@ export const generarReporteResumen = async (req, res) => {
 
         if (result.length === 0) {
             console.log('No hay datos en listado_filtrado.');
+            if (res) {
+                return res.json({ message: 'No hay datos para generar el reporte', status: 'warning' });
+            }
             return;
         }
 
@@ -603,21 +616,28 @@ export const generarReporteResumen = async (req, res) => {
         console.log('Reporte generado:', reportPath);
 
         // Enviar el reporte por correo
-        await enviarCorreoReporte(reportPath, 'diario');
+        const emailEnviado = await enviarCorreoReporte(reportPath, 'diario');
 
         // Responder al cliente si existe una respuesta HTTP
         if (res) {
-            res.json({ message: 'Reporte diario generado y enviado correctamente' });
+            if (emailEnviado) {
+                res.json({ message: 'Reporte diario generado y enviado correctamente', status: 'success' });
+            } else {
+                res.json({ message: 'Reporte diario generado correctamente pero hubo problemas al enviar el correo. El administrador revisará esta situación.', status: 'warning' });
+            }
         }
 
     } catch (error) {
         console.error('Error al generar o enviar el reporte diario:', error);
         if (res) {
-            res.status(500).json({ error: 'Error al generar el reporte diario' });
+            res.status(500).json({ 
+                error: 'Error al generar el reporte diario', 
+                message: 'Ocurrió un problema al generar el reporte diario. Por favor intente más tarde o contacte al administrador.',
+                status: 'error'
+            });
         }
     }
 };
-
 
 
 const enviarCorreoReporte = async (filePath, tipoReporte) => {
