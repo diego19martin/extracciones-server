@@ -645,15 +645,15 @@ const enviarCorreoReporte = async (filePath, tipoReporte) => {
         // Listas de destinatarios
         const destinatariosTecnica = [
             'dargonz@palermo.com.ar',
-            // 'mholley@palermo.com.ar',
-            // 'sespinoza@palermo.com.ar',
-            // 'jmaldonado@palermo.com.ar',
-            // 'jzuazo@palermo.com.ar',
-            // 'gaguiar@palermo.com.ar',
-            // 'fbernardo@palermo.com.ar',
-            // 'fdotti@palermo.com.ar',
-            // 'jefesjuego@palermo.com.ar',
-            // 'edariozzi@betfun.com.ar'
+            'mholley@palermo.com.ar',
+            'sespinoza@palermo.com.ar',
+            'jmaldonado@palermo.com.ar',
+            'jzuazo@palermo.com.ar',
+            'gaguiar@palermo.com.ar',
+            'fbernardo@palermo.com.ar',
+            'fdotti@palermo.com.ar',
+            'jefesjuego@palermo.com.ar',
+            'edariozzi@betfun.com.ar'
         ];
 
         const destinatariosZonas = [
@@ -666,12 +666,12 @@ const enviarCorreoReporte = async (filePath, tipoReporte) => {
 
         const destinatariosDiario = [
             'dargonz@palermo.com.ar',
-            // 'jzuazo@palermo.com.ar',
-            // 'gaguiar@palermo.com.ar',
-            // 'fbernardo@palermo.com.ar',
-            // 'fdotti@palermo.com.ar',
-            // 'crodriguez@palermo.com.ar',
-            // 'edariozzi@palermo.com.ar',
+            'jzuazo@palermo.com.ar',
+            'gaguiar@palermo.com.ar',
+            'fbernardo@palermo.com.ar',
+            'fdotti@palermo.com.ar',
+            'crodriguez@palermo.com.ar',
+            'edariozzi@palermo.com.ar',
         ];
 
         // Seleccionar los destinatarios según el tipo de reporte
