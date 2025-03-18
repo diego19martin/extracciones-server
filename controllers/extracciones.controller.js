@@ -649,10 +649,6 @@ const enviarCorreoReporte = async (filePath, tipoReporte) => {
             'sespinoza@palermo.com.ar',
             'jmaldonado@palermo.com.ar',
             'jzuazo@palermo.com.ar',
-            'gaguiar@palermo.com.ar',
-            'fbernardo@palermo.com.ar',
-            'fdotti@palermo.com.ar',
-            'jefesjuego@palermo.com.ar',
             'edariozzi@betfun.com.ar'
         ];
 
