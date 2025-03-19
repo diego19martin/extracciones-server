@@ -361,8 +361,8 @@ const generarYEnviarReporteZona = async (zona) => {
 
         console.log('Reporte de zona generado exitosamente:', reportFilePath);
 
-        // Enviar el correo con el reporte adjunto
-        enviarCorreoReporte(reportFilePath, 'zona');
+        // // Enviar el correo con el reporte adjunto
+        // enviarCorreoReporte(reportFilePath, 'zona');
 
     } catch (error) {
         console.error('Error al generar y enviar el reporte de zona:', error);
@@ -789,3 +789,153 @@ export const getEmpleados = async (req, res) => {
         res.status(500).json({ error: 'Error al obtener empleados' });
     }
 };
+
+
+// Función final para generar Excel en el servidor con título correcto
+export const generateExcelExport = async (req, res) => {
+    try {
+      const { filter } = req.query; // Parámetro opcional de filtro
+      
+      // Construir la consulta SQL para filtrar las máquinas según el filtro
+      let query = 'SELECT * FROM listado_filtrado';
+      if (filter && filter !== 'Todos') {
+        if (filter === 'No iniciado') {
+          query += ' WHERE finalizado IS NULL OR finalizado = "No iniciado"';
+        } else if (filter === 'Con novedad') {
+          query += ' WHERE comentario IS NOT NULL AND comentario != ""';
+        } else {
+          query += ' WHERE finalizado = ?';
+        }
+      }
+      
+      // Ejecutar la consulta con o sin parámetro según corresponda
+      let result;
+      if (filter && filter !== 'Todos' && filter !== 'No iniciado' && filter !== 'Con novedad') {
+        [result] = await pool.query(query, [filter]);
+      } else {
+        [result] = await pool.query(query);
+      }
+      
+      if (result.length === 0) {
+        return res.status(404).json({ message: 'No hay datos para exportar' });
+      }
+      
+      // Crear un nuevo libro de Excel
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Listado de Máquinas');
+      
+      // Determinar el título correcto basado en el filtro recibido
+      let title = '';
+      
+      // Si el filtro es "Con novedad", usar "Comentario" como título
+      if (filter === 'Con novedad') {
+        title = 'Comentario';
+      } 
+      // Para otros filtros, usar el nombre directamente
+      else {
+        title = filter || 'Todos';
+      }
+      
+      console.log('Filtro recibido:', filter);
+      console.log('Título a usar:', title);
+      
+      // Agregar título principal
+      worksheet.mergeCells('A1:G1');
+      const titleCell = worksheet.getCell('A1');
+      titleCell.value = title;
+      titleCell.font = { size: 16, bold: true };
+      titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+      titleCell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'E2EFDA' } // Color verde claro para el encabezado
+      };
+      titleCell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+      
+      // Definir columnas con títulos correctos
+      const columns = [
+        { header: '#', key: 'index', width: 5 },
+        { header: 'Máquina', key: 'maquina', width: 15 },
+        { header: 'Location', key: 'location', width: 12 },
+        { header: 'Asistente 1', key: 'asistente1', width: 20 },
+        { header: 'Asistente 2', key: 'asistente2', width: 20 },
+        { header: 'Estado', key: 'estado', width: 15 },
+        { header: 'Comentario', key: 'comentario', width: 35 }
+      ];
+      
+      // Asignar columnas explícitamente
+      worksheet.columns = columns;
+      
+      // Agregar fila con los encabezados de columna explícitamente
+      const headers = columns.map(col => col.header);
+      worksheet.addRow(headers);
+      
+      // Estilizar la fila de encabezado para que sea clara y visible
+      const headerRow = worksheet.getRow(2); // La fila 2 contiene los encabezados de columna
+      headerRow.eachCell((cell) => {
+        cell.font = { bold: true };
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        cell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        };
+        // Color de fondo para los encabezados de columna
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'F2F2F2' } // Color gris claro para los encabezados de columna
+        };
+      });
+      
+      // Agregar filas con datos pero sin aplicar colores de fondo
+      result.forEach((item, index) => {
+        const rowData = [
+          index + 1,
+          item.maquina || '',
+          item.location || '',
+          item.asistente1 || '',
+          item.asistente2 || '',
+          item.finalizado || 'No iniciado',
+          item.comentario || ''
+        ];
+        
+        const row = worksheet.addRow(rowData);
+        
+        // Agregar bordes a cada celda pero sin color de fondo
+        row.eachCell({ includeEmpty: true }, (cell) => {
+          cell.border = {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' }
+          };
+          cell.alignment = { vertical: 'middle' };
+        });
+      });
+      
+      // Ajustar el nombre del archivo basado en el filtro
+      const exportFileName = `${title.toLowerCase().replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+      // Configurar las cabeceras de respuesta para la descarga del archivo
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename=${exportFileName}`);
+      
+      // Escribir el archivo al stream de respuesta
+      await workbook.xlsx.write(res);
+      res.end();
+      
+    } catch (error) {
+      console.error('Error al generar Excel:', error);
+      res.status(500).json({ 
+        error: 'Error al generar Excel', 
+        message: 'Ocurrió un problema al generar el archivo Excel. Por favor intente más tarde.'
+      });
+    }
+  };

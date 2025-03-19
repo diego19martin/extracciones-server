@@ -15,7 +15,8 @@ import {
     uploadEmployees,
     getEmpleados,
     getListadoFiltrado,
-    getConfig
+    getConfig,
+    generateExcelExport
 } from "../controllers/extracciones.controller.js";
 
 const router = Router();
@@ -37,6 +38,10 @@ router.post('/employees', addEmployee);
 router.delete('/employees/:id', removeEmployee);
 router.post('/employees/upload', uploadEmployees)
 router.get('/empleados', getEmpleados);
+
+
+// Nueva ruta para exportar a Excel
+router.get('/exportExcel', generateExcelExport);
 
 
 export default router;
