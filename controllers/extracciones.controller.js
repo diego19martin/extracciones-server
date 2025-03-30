@@ -6,7 +6,7 @@ import path from 'path';
 import ExcelJS from 'exceljs';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
-
+import XLSX from 'xlsx';
 
 // Definir __dirname para módulos ECMAScript
 const __filename = fileURLToPath(import.meta.url);
@@ -790,7 +790,6 @@ export const getEmpleados = async (req, res) => {
     }
 };
 
-
 // Función final para generar Excel en el servidor con título correcto
 export const generateExcelExport = async (req, res) => {
     try {
@@ -938,4 +937,552 @@ export const generateExcelExport = async (req, res) => {
         message: 'Ocurrió un problema al generar el archivo Excel. Por favor intente más tarde.'
       });
     }
+};
+
+// Nuevas funciones para integración con Dashboard
+
+export const getBulkMachinesExtraction = async (req, res) => {
+  try {
+    const { machines } = req.body;
+    
+    if (!machines || !Array.isArray(machines) || machines.length === 0) {
+      return res.status(400).json({ 
+        error: 'Formato de solicitud inválido',
+        message: 'Se requiere un array de IDs de máquinas'
+      });
+    }
+    
+    // Crear consulta para múltiples máquinas
+    const placeholders = machines.map(() => '?').join(',');
+    const query = `SELECT * FROM listado_filtrado WHERE maquina IN (${placeholders})`;
+    
+    const [result] = await pool.query(query, machines);
+    
+    // Crear un mapa para acceso más rápido
+    const machineMap = {};
+    result.forEach(machine => {
+      machineMap[machine.maquina] = machine;
+    });
+    
+    res.json(machineMap);
+  } catch (error) {
+    console.error('Error al buscar datos de extracción en bloque:', error);
+    res.status(500).json({ error: 'Error al buscar datos de extracción en bloque' });
+  }
+};
+
+export const uploadAndProcessFiles = async (req, res) => {
+  try {
+    // Verificar que ambos archivos estén presentes
+    if (!req.files || !req.files.datFile || !req.files.xlsFile) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Faltan archivos necesarios (DAT y/o XLS)' 
+      });
+    }
+
+    const datFile = req.files.datFile;
+    const xlsFile = req.files.xlsFile;
+    
+    // Crear directorio para archivos temporales si no existe
+    const tempDir = path.join(__dirname, '../temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    
+    // Guardar archivos localmente para procesamiento
+    const datFilePath = path.join(tempDir, datFile.name);
+    const xlsFilePath = path.join(tempDir, xlsFile.name);
+    
+    await fsPromises.writeFile(datFilePath, datFile.data);
+    await fsPromises.writeFile(xlsFilePath, xlsFile.data);
+    
+    // Procesar el archivo DAT
+    const datContent = await fsPromises.readFile(datFilePath, 'utf8');
+    const datData = processDatFile(datContent);
+    
+    // Procesar el archivo XLS
+    const xlsBuffer = await fsPromises.readFile(xlsFilePath);
+    const xlsData = processXlsFile(xlsBuffer);
+    
+    // Comparar datos y obtener resultados
+    const comparisonResults = await compareData(datData, xlsData);
+    
+    // Limpiar archivos temporales
+    await fsPromises.unlink(datFilePath);
+    await fsPromises.unlink(xlsFilePath);
+    
+    // Devolver resultados al cliente
+    res.json({
+      success: true,
+      data: comparisonResults
+    });
+    
+  } catch (error) {
+    console.error('Error al procesar archivos:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error al procesar los archivos',
+      error: error.message
+    });
+  }
+};
+
+// Función para procesar el archivo DAT
+function processDatFile(content) {
+  const lines = content.split('\n');
+  
+  // Extraer los encabezados (primera línea que comienza con H)
+  const headerLine = lines.find(line => line.startsWith('H;'));
+  if (!headerLine) {
+    throw new Error('No se encontró la línea de encabezado (H) en el archivo DAT');
+  }
+  
+  const headerParts = headerLine.split(';');
+  
+  // Denominaciones de billetes según el encabezado
+  const denominaciones = [
+    parseInt(headerParts[5]) || 20,
+    parseInt(headerParts[6]) || 50,
+    parseInt(headerParts[7]) || 100,
+    parseInt(headerParts[8]) || 200,
+    parseInt(headerParts[9]) || 500,
+    parseInt(headerParts[10]) || 1000,
+    parseInt(headerParts[11]) || 2000,
+    parseInt(headerParts[12]) || 10000
+  ];
+  
+  // Extraer los datos de las líneas que comienzan con 'D;'
+  const machineData = lines
+    .filter(line => line.startsWith('D;'))
+    .map(line => {
+      const parts = line.split(';');
+      if (parts.length < 21) return null; // Verificar que haya suficientes datos
+      
+      // Billetes físicos (columnas 5-12)
+      let totalFisico = 0;
+      const billetesFisicos = {};
+      for (let i = 0; i < 8; i++) {
+        const cantidad = parseInt(parts[i + 5]) || 0;
+        const valor = denominaciones[i];
+        billetesFisicos[`B${valor}`] = cantidad;
+        totalFisico += cantidad * valor;
+      }
+      
+      // Billetes virtuales (columnas 13-20)
+      let totalVirtual = 0;
+      const billetesVirtuales = {};
+      for (let i = 0; i < 8; i++) {
+        const cantidad = parseInt(parts[i + 13]) || 0;
+        const valor = denominaciones[i];
+        billetesVirtuales[`IM${valor}`] = cantidad;
+        totalVirtual += cantidad * valor;
+      }
+      
+      return {
+        headercard: parts[1],
+        machineId: parts[2],
+        date: parts[3],
+        time: parts[4],
+        billetesFisicos,
+        billetesVirtuales,
+        totalFisico,
+        totalVirtual,
+        totalCounted: totalFisico + totalVirtual
+      };
+    })
+    .filter(item => item !== null);
+    
+  return machineData;
+}
+
+// Función para procesar el archivo XLS
+function processXlsFile(buffer) {
+  const data = new Uint8Array(buffer);
+  const workbook = XLSX.read(data, { type: 'array' });
+  const sheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
+  const jsonData = XLSX.utils.sheet_to_json(worksheet);
+  
+  // Intentar detectar las columnas automáticamente
+  let machineIdField = '';
+  let valueField = '';
+  let locationField = '';
+  let zoneField = '';
+  let headerCardField = '';
+  
+  // Si hay al menos una fila, examinar sus propiedades
+  if (jsonData.length > 0) {
+    const firstRow = jsonData[0];
+    const headers = Object.keys(firstRow);
+    
+    // Buscar encabezados comunes
+    for (const header of headers) {
+      const headerLower = header.toLowerCase();
+      
+      if (headerLower.includes('maq') || headerLower.includes('machine') || headerLower.includes('id')) {
+        machineIdField = header;
+      } else if (headerLower.includes('val') || headerLower.includes('monto') || headerLower.includes('amount') || headerLower.includes('total')) {
+        valueField = header;
+      } else if (headerLower.includes('loc') || headerLower.includes('ubic')) {
+        locationField = header;
+      } else if (headerLower.includes('zona') || headerLower.includes('zone') || headerLower.includes('area')) {
+        zoneField = header;
+      } else if (headerLower.includes('serie') || headerLower.includes('header') || headerLower.includes('card')) {
+        headerCardField = header;
+      }
+    }
+    
+    // Si no se detectaron automáticamente, usar los primeros campos disponibles
+    if (!machineIdField && headers.length > 0) machineIdField = headers[0];
+    if (!valueField && headers.length > 1) valueField = headers[1];
+    if (!locationField && headers.length > 2) locationField = headers[2];
+    if (!zoneField && headers.length > 3) zoneField = headers[3];
+  }
+  
+  // Procesar y normalizar los datos
+  return jsonData.map(row => {
+    // Intentar obtener el ID de la máquina
+    let machineId = '';
+    if (machineIdField && row[machineIdField] !== undefined) {
+      machineId = row[machineIdField].toString().trim();
+    } else {
+      // Buscar cualquier campo que pueda contener un ID de máquina
+      for (const field in row) {
+        if (field.toLowerCase().includes('maq') || field.toLowerCase().includes('machine') || field.toLowerCase().includes('id')) {
+          machineId = row[field].toString().trim();
+          break;
+        }
+      }
+      
+      // Si aún no hay ID, probar con la primera propiedad
+      if (!machineId && Object.keys(row).length > 0) {
+        machineId = row[Object.keys(row)[0]].toString().trim();
+      }
+    }
+    
+    // Obtener el número de serie si está disponible
+    let headercard = '';
+    if (headerCardField && row[headerCardField] !== undefined) {
+      headercard = row[headerCardField].toString().trim();
+    } else {
+      // Buscar cualquier campo que pueda contener un número de serie
+      for (const field in row) {
+        if (field.toLowerCase().includes('serie') || field.toLowerCase().includes('header') || field.toLowerCase().includes('card')) {
+          headercard = row[field].toString().trim();
+          break;
+        }
+      }
+    }
+    
+    // Obtener el valor esperado
+    let expectedAmount = 0;
+    if (valueField && row[valueField] !== undefined) {
+      expectedAmount = parseFloat(row[valueField]) || 0;
+    } else {
+      // Buscar cualquier campo que parezca ser un valor monetario
+      for (const field in row) {
+        if (field.toLowerCase().includes('val') || field.toLowerCase().includes('monto') || 
+            field.toLowerCase().includes('amount') || field.toLowerCase().includes('total')) {
+          expectedAmount = parseFloat(row[field]) || 0;
+          break;
+        }
+      }
+      
+      // Si aún no hay valor y hay al menos dos campos, probar con el segundo
+      if (expectedAmount === 0 && Object.keys(row).length > 1) {
+        expectedAmount = parseFloat(row[Object.keys(row)[1]]) || 0;
+      }
+    }
+    
+    // Obtener ubicación y zona
+    let location = '';
+    if (locationField && row[locationField] !== undefined) {
+      location = row[locationField].toString().trim();
+    }
+    
+    let zona = '';
+    if (zoneField && row[zoneField] !== undefined) {
+      zona = row[zoneField].toString().trim();
+    }
+    
+    return {
+      machineId,
+      headercard,
+      expectedAmount,
+      location,
+      zona
+    };
+  }).filter(item => item.machineId); // Filtrar elementos sin ID de máquina
+}
+
+// Función para comparar datos y obtener los datos de la BD
+async function compareData(datData, xlsData) {
+  // Mapeo para hacer seguimiento de las máquinas del archivo XLS
+  const xlsMachineMap = {};
+  const results = [];
+  let totalExpected = 0;
+  let totalCounted = 0;
+  let matchingCount = 0;
+  let nonMatchingCount = 0;
+  let missingCount = 0;
+  let extraCount = 0;
+  
+  // Primero procesamos los datos de los archivos XLS
+  xlsData.forEach(item => {
+    const normalizedId = item.machineId.toString().trim();
+    xlsMachineMap[normalizedId] = {
+      ...item,
+      found: false
+    };
+    totalExpected += item.expectedAmount || 0;
+  });
+  
+  // Obtener todos los IDs de las máquinas para buscar en la base de datos
+  const allMachineIds = [...new Set([
+    ...datData.map(item => item.machineId.toString().trim()),
+    ...xlsData.map(item => item.machineId.toString().trim())
+  ])];
+  
+  // Consultar la base de datos para todas las máquinas de una sola vez
+  const placeholders = allMachineIds.map(() => '?').join(',');
+  const query = `SELECT * FROM listado_filtrado WHERE maquina IN (${placeholders})`;
+  const [dbMachines] = await pool.query(query, allMachineIds);
+  
+  // Crear un mapa para acceso más rápido a los datos de la BD
+  const dbMachineMap = {};
+  dbMachines.forEach(machine => {
+    dbMachineMap[machine.maquina] = machine;
+  });
+  
+  // Comparamos cada máquina del archivo DAT con las del XLS
+  datData.forEach(datItem => {
+    const normalizedId = datItem.machineId.toString().trim();
+    const xlsItem = xlsMachineMap[normalizedId];
+    const dbItem = dbMachineMap[normalizedId];
+    
+    if (xlsItem) {
+      // Máquina encontrada en ambos archivos
+      xlsItem.found = true;
+      const difference = datItem.totalCounted - xlsItem.expectedAmount;
+      const match = Math.abs(difference) < 1; // Tolerancia de 1 peso
+      
+      if (match) {
+        matchingCount++;
+      } else {
+        nonMatchingCount++;
+      }
+      
+      results.push({
+        machineId: normalizedId,
+        headercard: datItem.headercard,
+        location: xlsItem.location || 'Sin ubicación',
+        zona: xlsItem.zona || '',
+        expectedAmount: xlsItem.expectedAmount || 0,
+        countedAmount: datItem.totalCounted || 0,
+        countedPhysical: datItem.totalFisico || 0,
+        countedVirtual: datItem.totalVirtual || 0,
+        difference,
+        match,
+        status: match ? 'match' : 'mismatch',
+        date: datItem.date,
+        time: datItem.time,
+        billetesFisicos: datItem.billetesFisicos,
+        billetesVirtuales: datItem.billetesVirtuales,
+        dbData: dbItem || null
+      });
+      
+      totalCounted += datItem.totalCounted || 0;
+    } else {
+      // Máquina en DAT pero no en XLS
+      extraCount++;
+      results.push({
+        machineId: normalizedId,
+        headercard: datItem.headercard,
+        location: 'Desconocida',
+        zona: 'Desconocida',
+        expectedAmount: 0,
+        countedAmount: datItem.totalCounted || 0,
+        countedPhysical: datItem.totalFisico || 0,
+        countedVirtual: datItem.totalVirtual || 0,
+        difference: datItem.totalCounted,
+        match: false,
+        status: 'extra',
+        date: datItem.date,
+        time: datItem.time,
+        billetesFisicos: datItem.billetesFisicos,
+        billetesVirtuales: datItem.billetesVirtuales,
+        dbData: dbItem || null
+      });
+      
+      totalCounted += datItem.totalCounted || 0;
+    }
+  });
+  
+  // Revisar máquinas que están en XLS pero no en DAT
+  Object.entries(xlsMachineMap).forEach(([key, item]) => {
+    if (!item.found) {
+      // Máquina en XLS pero no en DAT
+      missingCount++;
+      const dbItem = dbMachineMap[key];
+      
+      results.push({
+        machineId: item.machineId,
+        headercard: item.headercard || '',
+        location: item.location || 'Sin ubicación',
+        zona: item.zona || '',
+        expectedAmount: item.expectedAmount || 0,
+        countedAmount: 0,
+        countedPhysical: 0,
+        countedVirtual: 0,
+        difference: -item.expectedAmount,
+        match: false,
+        status: 'missing',
+        date: '',
+        time: '',
+        billetesFisicos: {},
+        billetesVirtuales: {},
+        dbData: dbItem || null
+      });
+    }
+  });
+  
+  // Ordenar los resultados
+  const sortedResults = results.sort((a, b) => {
+    // Primero las discrepancias, luego las faltantes, luego las extra, finalmente las que coinciden
+    if (a.status !== b.status) {
+      if (a.status === 'mismatch') return -1;
+      if (b.status === 'mismatch') return 1;
+      if (a.status === 'missing') return -1;
+      if (b.status === 'missing') return 1;
+      if (a.status === 'extra') return -1;
+      if (b.status === 'extra') return 1;
+    }
+    return a.machineId.localeCompare(b.machineId);
+  });
+  
+  return {
+    results: sortedResults,
+    summary: {
+      totalExpected,
+      totalCounted,
+      matchingMachines: matchingCount,
+      nonMatchingMachines: nonMatchingCount,
+      missingMachines: missingCount,
+      extraMachines: extraCount
+    }
   };
+}
+
+// Función para generar y guardar un reporte Excel
+export const generateComparisonReport = async (req, res) => {
+  try {
+    const { data } = req.body;
+    
+    if (!data || !data.results || !data.summary) {
+      return res.status(400).json({
+        success: false,
+        message: 'Datos insuficientes para generar el reporte'
+      });
+    }
+    
+    // Crear directorio para reportes si no existe
+    const reportDir = path.join(__dirname, '../reportes');
+    if (!fs.existsSync(reportDir)) {
+      fs.mkdirSync(reportDir, { recursive: true });
+    }
+    
+    // Crear un nuevo workbook
+    const workbook = new ExcelJS.Workbook();
+    
+    // Añadir hoja de resultados detallados
+    const worksheet = workbook.addWorksheet('Resultados');
+    
+    // Definir encabezados
+    worksheet.columns = [
+      { header: 'Máquina', key: 'machineId', width: 12 },
+      { header: 'Headercard', key: 'headercard', width: 15 },
+      { header: 'Ubicación', key: 'location', width: 15 },
+      { header: 'Zona', key: 'zona', width: 10 },
+      { header: 'Esperado ($)', key: 'expectedAmount', width: 15 },
+      { header: 'Contado Físico ($)', key: 'countedPhysical', width: 18 },
+      { header: 'Contado Virtual ($)', key: 'countedVirtual', width: 18 },
+      { header: 'Total Contado ($)', key: 'countedAmount', width: 18 },
+      { header: 'Diferencia ($)', key: 'difference', width: 15 },
+      { header: 'Estado', key: 'status', width: 15 },
+      { header: 'Registrado en BD', key: 'inDb', width: 15 },
+      { header: 'Bill en BD ($)', key: 'dbBill', width: 15 },
+      { header: 'Estado en BD', key: 'dbStatus', width: 15 }
+    ];
+    
+    // Añadir datos a la hoja de resultados
+    data.results.forEach(row => {
+      const dbData = row.dbData || {};
+      
+      worksheet.addRow({
+        machineId: row.machineId,
+        headercard: row.headercard || '',
+        location: row.location || '',
+        zona: row.zona || '',
+        expectedAmount: row.expectedAmount || 0,
+        countedPhysical: row.countedPhysical || 0,
+        countedVirtual: row.countedVirtual || 0,
+        countedAmount: row.countedAmount || 0,
+        difference: row.difference || 0,
+        status: row.status === 'match' ? 'Coincide' : 
+                row.status === 'mismatch' ? 'No coincide' : 
+                row.status === 'missing' ? 'Faltante' : 'Extra',
+        inDb: dbData.id ? 'Sí' : 'No',
+        dbBill: dbData.bill || 0,
+        dbStatus: dbData.finalizado || 'No registrado'
+      });
+    });
+    
+    // Formatear la hoja de resultados
+    worksheet.getRow(1).font = { bold: true };
+    worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+    
+    // Añadir hoja de resumen
+    const summarySheet = workbook.addWorksheet('Resumen');
+    
+    // Añadir encabezados y datos de resumen
+    summarySheet.columns = [
+      { header: 'Concepto', key: 'concepto', width: 25 },
+      { header: 'Valor', key: 'valor', width: 15 }
+    ];
+    
+    summarySheet.addRow({ concepto: 'Total Esperado', valor: data.summary.totalExpected });
+    summarySheet.addRow({ concepto: 'Total Contado', valor: data.summary.totalCounted });
+    summarySheet.addRow({ concepto: 'Diferencia', valor: data.summary.totalCounted - data.summary.totalExpected });
+    summarySheet.addRow({ concepto: 'Máquinas Coincidentes', valor: data.summary.matchingMachines });
+    summarySheet.addRow({ concepto: 'Máquinas No Coincidentes', valor: data.summary.nonMatchingMachines });
+    summarySheet.addRow({ concepto: 'Máquinas Faltantes', valor: data.summary.missingMachines });
+    summarySheet.addRow({ concepto: 'Máquinas Extra', valor: data.summary.extraMachines });
+    summarySheet.addRow({ concepto: 'Total Máquinas', valor: data.summary.matchingMachines + data.summary.nonMatchingMachines + data.summary.missingMachines + data.summary.extraMachines });
+    
+    // Formatear la hoja de resumen
+    summarySheet.getRow(1).font = { bold: true };
+    summarySheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+    
+    // Guardar el archivo Excel
+    const date = new Date().toISOString().slice(0, 10);
+    const reportPath = path.join(reportDir, `Reporte_Comparacion_${date}.xlsx`);
+    
+    await workbook.xlsx.writeFile(reportPath);
+    
+    // Retornar la ubicación del reporte generado
+    res.json({
+      success: true,
+      reportPath: reportPath,
+      message: 'Reporte generado exitosamente'
+    });
+    
+  } catch (error) {
+    console.error('Error al generar el reporte:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al generar el reporte',
+      error: error.message
+    });
+  }
+};
