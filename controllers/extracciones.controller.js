@@ -182,52 +182,139 @@ export const getInfo = async (req, res) => {
 
 
 export const postSelect = async (req, res) => {
-    try {
-        const { finalizado, asistente1, asistente2, comentario, maquina, zona } = req.body;
+  try {
+      // Extraer todos los campos del body
+      const { finalizado, asistente1, asistente2, comentario, maquina, zona, headercard } = req.body;
 
-        // Actualizar la base de datos con la información de la extracción
-        await pool.query(
-            'UPDATE listado_filtrado SET `finalizado`=?, `asistente1`=?, `asistente2`=?, `comentario`=? WHERE `maquina` = ?',
-            [finalizado, asistente1, asistente2, comentario, maquina]
-        );
+      console.log('Datos recibidos en postSelect:', {
+          finalizado, 
+          asistente1: asistente1 || "No especificado", 
+          asistente2: asistente2 || "No especificado", 
+          comentario: comentario || "Sin comentario", 
+          maquina, 
+          zona, 
+          headercard: headercard || "No especificado"
+      });
 
-        // Emitir la tabla actualizada a los clientes conectados
-        const [updatedTable] = await pool.query('SELECT * FROM `listado_filtrado` ORDER BY location ASC');
-        io.emit('tableUpdate', updatedTable);
+      // Verificar que maquina existe
+      if (!maquina) {
+          return res.status(400).json({
+              success: false,
+              error: 'Parámetros incompletos',
+              message: 'El número de máquina es obligatorio'
+          });
+      }
 
-        // Actualizar la tabla listado con el estado de la extracción
-        await pool.query(
-            'UPDATE listado SET `finalizado`=? WHERE `maquina` = ?',
-            [finalizado, maquina]
-        );
+      // Consultar si la máquina existe en la base de datos
+      const [existingMachine] = await pool.query(
+          'SELECT * FROM listado_filtrado WHERE maquina = ?',
+          [maquina]
+      );
 
+      if (existingMachine.length === 0) {
+          return res.status(404).json({
+              success: false,
+              error: 'Máquina no encontrada',
+              message: `La máquina ${maquina} no existe en el listado filtrado`
+          });
+      }
 
-        // Verificar si todas las máquinas en la zona han sido extraídas o marcadas como pendientes
-        const [result] = await pool.query(
-            'SELECT COUNT(*) AS maquinasPendientes FROM listado_filtrado WHERE zona = ? AND (finalizado IS NULL OR finalizado != "Completa" AND finalizado != "Pendiente")',
-            [zona]
-        );
+      // Actualizar la tabla listado_filtrado (única tabla a actualizar)
+      let updateFields = [];
+      let updateValues = [];
 
-        if (result[0].maquinasPendientes === 0) {
-            console.log(`Todas las máquinas en la zona ${zona} han sido extraídas o marcadas como pendientes. Generando reporte para el tesorero.`);
-            await generarYEnviarReporteZona(zona);
+      // Verificar y agregar cada campo para listado_filtrado
+      if (finalizado !== undefined) {
+          updateFields.push('`finalizado`=?');
+          updateValues.push(finalizado);
+      }
 
-             // Verificar si todas las máquinas han sido extraídas o marcadas como pendientes (para el reporte general a técnicos)
-        const [generalResult] = await pool.query(
-            'SELECT COUNT(*) AS maquinasPendientes FROM listado_filtrado WHERE finalizado IS NULL OR finalizado NOT IN ("Completa", "Pendiente")'
-        );
+      if (asistente1 !== undefined) {
+          updateFields.push('`asistente1`=?');
+          updateValues.push(asistente1);
+      }
 
-        if (generalResult[0].maquinasPendientes === 0) {
-            console.log('Todas las máquinas han sido extraídas o marcadas como pendientes. Generando reporte para los técnicos.');
-            await generarYEnviarReporte();
-        }
-        }
+      if (asistente2 !== undefined) {
+          updateFields.push('`asistente2`=?');
+          updateValues.push(asistente2);
+      }
 
-        return res.json('ok');
-    } catch (error) {
-        console.error('Error al actualizar el registro:', error);
-        return res.status(500).json({ error: 'Error al actualizar el registro' });
-    }
+      if (comentario !== undefined) {
+          updateFields.push('`comentario`=?');
+          updateValues.push(comentario);
+      }
+
+      if (headercard !== undefined) {
+          updateFields.push('`headercard`=?');
+          updateValues.push(headercard);
+      }
+
+      // Agregar el ID de máquina al final de los valores
+      updateValues.push(maquina);
+
+      // Ejecutar la consulta de actualización para listado_filtrado
+      if (updateFields.length > 0) {
+          const updateQuery = `UPDATE listado_filtrado SET ${updateFields.join(', ')} WHERE maquina = ?`;
+          console.log('Consulta para listado_filtrado:', updateQuery);
+          console.log('Valores:', updateValues);
+
+          await pool.query(updateQuery, updateValues);
+      }
+
+      // Emitir la tabla actualizada a los clientes conectados
+      const [updatedTable] = await pool.query('SELECT * FROM listado_filtrado ORDER BY location ASC');
+      io.emit('tableUpdate', updatedTable);
+
+      // Verificar si todas las máquinas en la zona han sido extraídas o marcadas como pendientes
+      if (zona) {
+          const [result] = await pool.query(
+              'SELECT COUNT(*) AS maquinasPendientes FROM listado_filtrado WHERE zona = ? AND (finalizado IS NULL OR finalizado != "Completa" AND finalizado != "Pendiente")',
+              [zona]
+          );
+
+          if (result[0].maquinasPendientes === 0) {
+              console.log(`Todas las máquinas en la zona ${zona} han sido extraídas o marcadas como pendientes.`);
+              try {
+                  await generarYEnviarReporteZona(zona);
+              } catch (reportError) {
+                  console.error('Error al generar reporte de zona:', reportError);
+              }
+
+              const [generalResult] = await pool.query(
+                  'SELECT COUNT(*) AS maquinasPendientes FROM listado_filtrado WHERE finalizado IS NULL OR finalizado NOT IN ("Completa", "Pendiente")'
+              );
+
+              if (generalResult[0].maquinasPendientes === 0) {
+                  console.log('Todas las máquinas han sido extraídas o marcadas como pendientes.');
+                  try {
+                      await generarYEnviarReporte();
+                  } catch (reportError) {
+                      console.error('Error al generar reporte general:', reportError);
+                  }
+              }
+          }
+      }
+
+      // Respuesta exitosa
+      return res.json({
+          success: true,
+          message: 'Registro actualizado correctamente',
+          maquina: maquina,
+          finalizado: finalizado,
+          headercard: headercard || null,
+          asistente1: asistente1 || null,
+          asistente2: asistente2 || null
+      });
+
+  } catch (error) {
+      console.error('Error al actualizar el registro:', error);
+      return res.status(500).json({ 
+          success: false,
+          error: 'Error al actualizar el registro',
+          message: error.message || 'Ocurrió un error interno del servidor',
+          details: error.toString()
+      });
+  }
 };
 
 export const getListadoFiltrado = async (req, res) => {
