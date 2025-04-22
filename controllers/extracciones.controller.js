@@ -14,52 +14,63 @@ const __dirname = dirname(__filename);
 
 
 export const postList = async (req, res) => {
-    try {
-        const { machines, valuePesos, valueDolares } = req.body; // Recibir máquinas y límites desde el cuerpo de la solicitud
+  try {
+      const { machines, valuePesos, valueDolares } = req.body;
 
-        // Limpiar la tabla de configuración anterior
-        await pool.query('TRUNCATE listado');
-        await pool.query('TRUNCATE listado_filtrado');
+      // Convertir a números para comparaciones
+      const numValuePesos = Number(valuePesos);
+      const numValueDolares = Number(valueDolares);
 
-        console.log(machines);
-        
+      // Limpiar tablas
+      await pool.query('TRUNCATE listado');
+      await pool.query('TRUNCATE listado_filtrado');
 
-        // Insertar todas las máquinas en la tabla "listado"
-        const insertValues = machines.map(({ machine, location, bill, zona, moneda }) =>
-            `('${machine}', '${location}', '${bill}', NOW(), '${zona}', '${moneda}')`
-        ).join(',');
+      console.log("Datos recibidos:", { 
+        machinesCount: machines.length,
+        valuePesos: numValuePesos,
+        valueDolares: numValueDolares 
+      });
 
-        const queryListado = `INSERT INTO listado (maquina, location, bill, fecha, zona, moneda) VALUES ${insertValues}`;
-        await pool.query(queryListado);
-        
-        // Filtrar las máquinas que cumplen con las condiciones y guardar en "listado_filtrado"
-        const filteredMachines = machines.filter(machine =>
-            (machine.moneda === 'pesos' && machine.bill >= valuePesos) ||
-            (machine.moneda === 'dolares' && machine.bill >= valueDolares)
-        );
+      // Formatear e insertar todas las máquinas en "listado"
+      if (machines.length > 0) {
+          const insertValues = machines.map(({ machine, location, bill, zona, moneda }) =>
+              `('${machine}', '${location}', '${Number(bill)}', NOW(), '${zona || '0'}', '${moneda || 'pesos'}')`
+          ).join(',');
 
-        if (filteredMachines.length > 0) {
-            const insertFilteredValues = filteredMachines.map(({ machine, location, bill, zona, moneda }) =>
-                `('${machine}', '${location}', '${bill}', NOW(), '${zona}', '${moneda}')`
-            ).join(',');
+          const queryListado = `INSERT INTO listado (maquina, location, bill, fecha, zona, moneda) VALUES ${insertValues}`;
+          await pool.query(queryListado);
+          
+          // Filtrar máquinas que cumplen con los límites
+          const filteredMachines = machines.filter(machine => {
+              const billValue = Number(machine.bill);
+              const mType = machine.moneda || 'pesos';
+              
+              return (mType === 'pesos' && billValue >= numValuePesos) ||
+                     (mType === 'dolares' && billValue >= numValueDolares);
+          });
 
-            const queryFiltrado = `INSERT INTO listado_filtrado (maquina, location, bill, fecha, zona, moneda) VALUES ${insertFilteredValues}`;
-            await pool.query(queryFiltrado);
-        }
+          console.log(`Máquinas filtradas: ${filteredMachines.length} de ${machines.length}`);
 
-        console.log('Lista completa de máquinas insertada y máquinas filtradas guardadas');
+          // Insertar máquinas filtradas en "listado_filtrado"
+          if (filteredMachines.length > 0) {
+              const insertFilteredValues = filteredMachines.map(({ machine, location, bill, zona, moneda }) =>
+                  `('${machine}', '${location}', '${Number(bill)}', NOW(), '${zona || '0'}', '${moneda || 'pesos'}')`
+              ).join(',');
 
-        // Emitir la tabla actualizada al frontend
-        const [updatedTable] = await pool.query('SELECT * FROM listado_filtrado ORDER BY location ASC');
-        console.log(updatedTable);
-        
-        // io.emit('tableUpdate', updatedTable);
+              const queryFiltrado = `INSERT INTO listado_filtrado (maquina, location, bill, fecha, zona, moneda) VALUES ${insertFilteredValues}`;
+              await pool.query(queryFiltrado);
+          }
 
-        return res.json('ok');
-    } catch (error) {
-        console.error('Error al insertar la lista de máquinas:', error);
-        res.status(500).json({ error: 'Error al insertar la lista de máquinas' });
-    }
+          // Emitir la tabla actualizada al frontend
+          const [updatedTable] = await pool.query('SELECT * FROM listado_filtrado ORDER BY location ASC');
+          io.emit('tableUpdate', updatedTable);
+      }
+
+      return res.json({ success: true, message: 'Listado procesado correctamente' });
+  } catch (error) {
+      console.error('Error al insertar la lista de máquinas:', error);
+      res.status(500).json({ success: false, error: 'Error al insertar la lista de máquinas' });
+  }
 };
 
 
@@ -111,73 +122,78 @@ export const getResumen = async (req, res) => {
 };
 
 export const getInfo = async (req, res) => {
+  const { maquina } = req.params;
 
-    const { maquina } = req.params;
+  try {
+    // Buscar la máquina específica
+    const [result] = await pool.query('SELECT * FROM `listado` WHERE maquina = ?', [maquina]);
+    const [limite] = await pool.query('SELECT * FROM `config`');
 
-    // console.log(maquina);
-    
+    if (result.length > 0) {
+      const loc = result[0].location || '';
+      
+      // Extraer el identificador de isla (primeros 4 caracteres)
+      const islaId = loc.length >= 4 ? loc.slice(0, 4) : loc;
+      
+      console.log(`Máquina: ${maquina}, Location: ${loc}, Isla ID: ${islaId}`);
+      
+      const limitPesos = limite[0]?.limite || 0;
+      const limitDolares = limite[0]?.limiteDolar || 1;
+      let listadoFinal = [];
 
-    try {
-        const [result] = await pool.query('SELECT * FROM `listado` WHERE maquina = ?', [maquina]);
-        const [limite] = await pool.query('SELECT * FROM `config`');
-
-        console.log('result', result);
-        
-
-        if (result.length > 0) {
-            const loc = result[0].location;
-            const location = loc.slice(0, 4);
-            const limitPesos = limite[0].limite;
-            const limitDolares = limite[0].limiteDolar;
-            let listadoFinal = [];
-
-            let listado;
-            try {
-                [listado] = await pool.query('SELECT * FROM `listado` WHERE LEFT(`location`, 4) = ? ORDER BY (`location`) DESC', [location]);
-            } catch (error) {
-                console.error('Error ejecutando la query de listado filtrada por location:', error);
-                throw error;
-            }
-
-            console.log('listado', listado);
-            
-
-            // Filtrar las máquinas según los límites
-            for (let i = 0; i < listado.length; i++) {
-                if ((listado[i].moneda === 'pesos' && listado[i].bill >= limitPesos) ||
-                    (listado[i].moneda === 'dolares' && listado[i].bill >= limitDolares)) {
-                    
-                    // Validar que los valores sean correctos antes de agregar al listado
-                    if (listado[i].maquina && listado[i].location && listado[i].bill) {
-                        const listadoExtraer = {
-                            fecha: listado[i].fecha,
-                            maquina: listado[i].maquina,
-                            location: listado[i].location,
-                            finalizado: listado[i].finalizado,
-                            id: listado[i].idlistado,
-                            zona: listado[i].zona,
-                        };
-                        listadoFinal.push(listadoExtraer);
-                        console.log(listadoExtraer);
-                        
-                    }
-                }
-            }
-
-            console.log(limitPesos, limitDolares);
-            console.log(listadoFinal);
-            
-            
-
-            // Devolver el listado filtrado
-            res.json(listadoFinal);
+      // Buscar todas las máquinas de la misma isla
+      let listado;
+      try {
+        // Mejorado para manejar casos donde location podría ser NULL o vacío
+        if (islaId) {
+          [listado] = await pool.query(
+            'SELECT * FROM `listado` WHERE LEFT(`location`, 4) = ? ORDER BY (`location`) DESC', 
+            [islaId]
+          );
         } else {
-            res.json([]); // Devolver un array vacío
+          // Si no hay un ID de isla válido, devolver solo la máquina original
+          listado = [result[0]];
         }
-    } catch (error) {
-        console.error('Error al obtener la información:', error);
-        res.status(500).json({ error: 'Error al obtener la información' });
+      } catch (error) {
+        console.error('Error ejecutando la query de listado filtrada por location:', error);
+        throw error;
+      }
+
+      console.log(`Encontradas ${listado.length} máquinas en la isla ${islaId}`);
+
+      // Filtrar las máquinas según los límites
+      for (let i = 0; i < listado.length; i++) {
+        const machine = listado[i];
+        if ((machine.moneda === 'pesos' && machine.bill >= limitPesos) ||
+            (machine.moneda === 'dolares' && machine.bill >= limitDolares)) {
+          
+          // Validar que los valores sean correctos antes de agregar al listado
+          if (machine.maquina && machine.location) {
+            const listadoExtraer = {
+              fecha: machine.fecha,
+              maquina: machine.maquina,
+              location: machine.location,
+              finalizado: machine.finalizado,
+              id: machine.idlistado,
+              zona: machine.zona,
+              isla: islaId // Agregamos explícitamente el identificador de isla
+            };
+            listadoFinal.push(listadoExtraer);
+          }
+        }
+      }
+
+      console.log(`Filtradas ${listadoFinal.length} máquinas que cumplen los límites (Pesos: ${limitPesos}, Dólares: ${limitDolares})`);
+
+      // Devolver el listado filtrado con información de la isla
+      res.json(listadoFinal);
+    } else {
+      res.json([]); // Devolver un array vacío si no se encuentra la máquina
     }
+  } catch (error) {
+    console.error('Error al obtener la información:', error);
+    res.status(500).json({ error: 'Error al obtener la información' });
+  }
 };
 
 
@@ -331,18 +347,19 @@ export const getListadoFiltrado = async (req, res) => {
   
   export const getConfig = async (req, res) => {
     try {
-        const [result] = await pool.query('SELECT * FROM `config` ORDER BY id DESC LIMIT 1');
-        if (result.length > 0) {
-            res.json(result[0]);
-        } else {
-            res.json({ limite: 0, limiteDolar: 1 });
-        }
+      // Cambiado: usamos ORDER BY fecha en lugar de id
+      const [result] = await pool.query('SELECT * FROM `config` ORDER BY fecha DESC LIMIT 1');
+      
+      if (result.length > 0) {
+        res.json(result[0]);
+      } else {
+        res.json({ limite: 0, limiteDolar: 1 });
+      }
     } catch (error) {
-        console.error('Error al obtener la configuración:', error);
-        res.status(500).json({ error: 'Error al obtener la configuración' });
+      console.error('Error al obtener la configuración:', error);
+      res.status(500).json({ error: 'Error al obtener la configuración' });
     }
   };
-
 
 const generarYEnviarReporteZona = async (zona) => {
     console.log('Generando reporte para la zona', zona);
