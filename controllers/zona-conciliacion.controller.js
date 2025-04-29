@@ -8,7 +8,21 @@ import { dirname } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-export const guardarConciliacionZona = async (req, res) => {
+// Función auxiliar para obtener fecha y hora con zona horaria Argentina (-3)
+const obtenerFechaHoraArgentina = () => {
+    const ahora = new Date();
+    // Si estamos en la zona horaria UTC, restar 3 horas para Argentina
+    // No es necesario restar si ya estamos en la zona horaria local de Argentina
+    const offset = -3; // Argentina es GMT-3
+    ahora.setHours(ahora.getHours() + offset);
+    
+    const fecha = ahora.toISOString().split('T')[0]; // formato: YYYY-MM-DD
+    const hora = ahora.toTimeString().split(' ')[0]; // formato: HH:MM:SS
+    
+    return { fecha, hora, fechaCompleta: ahora };
+  };
+
+  export const guardarConciliacionZona = async (req, res) => {
     console.log('guardarConciliacionZona llamado');
 
     const contentType = req.headers['content-type'] || '';
@@ -79,15 +93,21 @@ export const guardarConciliacionZona = async (req, res) => {
         }
 
         const diferencia = (totalContado || 0) - (totalEsperado || 0);
-
+        
+        // Obtener fecha y hora con zona horaria Argentina
+        const { fecha, hora } = obtenerFechaHoraArgentina();
+        
+        // Usar los valores de fecha y hora ajustados en lugar de CURDATE() y CURTIME()
         const [result] = await connection.execute(
             `INSERT INTO zona_conciliacion 
             (fecha, hora, zona, usuario, confirmada, usuario_confirmacion, fecha_confirmacion, 
             total_esperado, total_contado, diferencia, maquinas_totales, 
             maquinas_coincidentes, maquinas_discrepancia, maquinas_faltantes, 
             maquinas_extra, comentarios, archivo_dat, archivo_xls) 
-            VALUES (CURDATE(), CURTIME(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
+                fecha, // En lugar de CURDATE()
+                hora, // En lugar de CURTIME()
                 zona,
                 usuario,
                 confirmada ? 1 : 0,
@@ -111,12 +131,13 @@ export const guardarConciliacionZona = async (req, res) => {
         if (resultados.length > 0) {
             const insertBatch = [];
             const insertParams = [];
+            
+            // Usar la misma fecha para todas las máquinas
+            const fechaConciliacion = fecha + ' ' + hora;
 
             for (const machine of resultados) {
                 const diferenciaMaquina = (machine.countedAmount || 0) - (machine.expectedAmount || 0);
                 const tieneNovedad = machine.status === 'DISCREPANCY' || Math.abs(diferenciaMaquina) > 0.01;
-
-                const fechaConciliacion = new Date(); // o podés usar moment o dayjs
 
                 insertBatch.push('(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
                 insertParams.push(
@@ -128,12 +149,11 @@ export const guardarConciliacionZona = async (req, res) => {
                     machine.countedAmount || 0,
                     diferenciaMaquina,
                     machine.status || 'UNKNOWN',
-                    fechaConciliacion, // ✅ acá va
+                    fechaConciliacion, // Usar fecha ajustada
                     confirmada ? 1 : 0,
                     usuario,
                     tieneNovedad ? 1 : 0
                 );
-
             }
 
             const insertQuery = `
@@ -149,7 +169,7 @@ export const guardarConciliacionZona = async (req, res) => {
               valor_contado = VALUES(valor_contado),
               diferencia = VALUES(diferencia),
               estado = VALUES(estado),
-              fecha_conciliacion = NOW(),
+              fecha_conciliacion = VALUES(fecha_conciliacion),
               conciliado = VALUES(conciliado),
               usuario_conciliacion = VALUES(usuario_conciliacion),
               tiene_novedad = VALUES(tiene_novedad)
@@ -157,7 +177,6 @@ export const guardarConciliacionZona = async (req, res) => {
 
             await connection.query(insertQuery, insertParams);
         }
-
 
         await connection.commit();
         return res.status(201).json({ success: true, message: 'Conciliación guardada correctamente', id: result.insertId });
@@ -215,14 +234,17 @@ export const confirmarConciliacionZona = async (req, res) => {
             });
         }
 
+        // Obtener fecha con zona horaria Argentina
+        const { fechaCompleta } = obtenerFechaHoraArgentina();
+        
         // Actualizar estado a confirmada - Incluir comentarios si están presentes
         const updateQuery = comentarios 
-            ? 'UPDATE zona_conciliacion SET confirmada = TRUE, fecha_confirmacion = NOW(), usuario_confirmacion = ?, comentarios = ? WHERE id = ?'
-            : 'UPDATE zona_conciliacion SET confirmada = TRUE, fecha_confirmacion = NOW(), usuario_confirmacion = ? WHERE id = ?';
+            ? 'UPDATE zona_conciliacion SET confirmada = TRUE, fecha_confirmacion = ?, usuario_confirmacion = ?, comentarios = ? WHERE id = ?'
+            : 'UPDATE zona_conciliacion SET confirmada = TRUE, fecha_confirmacion = ?, usuario_confirmacion = ? WHERE id = ?';
         
         const updateParams = comentarios 
-            ? [usuario, comentarios, id]
-            : [usuario, id];
+            ? [fechaCompleta, usuario, comentarios, id]
+            : [fechaCompleta, usuario, id];
             
         await connection.query(updateQuery, updateParams);
         
@@ -247,16 +269,19 @@ export const confirmarConciliacionZona = async (req, res) => {
                 updateParams.push(detalle.maquina);
             }
             
+            // Usar fecha ajustada para Argentina
+            const fechaConciliacion = fechaCompleta;
+            
             // Actualizar todas las máquinas de una vez
             const updateTesoreroQuery = `
                 UPDATE maquinas_tesorero SET 
                 conciliado = 1,
                 usuario_conciliacion = ?,
-                fecha_conciliacion = NOW()
+                fecha_conciliacion = ?
                 WHERE maquina IN (${maquinasToUpdate.join(',')})
             `;
             
-            await connection.query(updateTesoreroQuery, [usuario, ...updateParams]);
+            await connection.query(updateTesoreroQuery, [usuario, fechaConciliacion, ...updateParams]);
             console.log(`Actualizadas ${detalles.length} máquinas en la tabla maquinas_tesorero`);
         }
 
@@ -274,7 +299,7 @@ export const confirmarConciliacionZona = async (req, res) => {
             id,
             zona: conciliacion[0].zona,
             usuario,
-            fecha: new Date()
+            fecha: fechaCompleta
         });
 
         // Emitir evento para actualización de dashboard del tesorero
