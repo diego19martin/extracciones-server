@@ -761,8 +761,11 @@ export const sincronizarMaquinasTesorero = async (req, res) => {
 /**
  * Guardar una nueva conciliación de zona (solo datos, sin archivos) - VERSIÓN OPTIMIZADA
  */
+/**
+ * Guardar una nueva conciliación de zona (solo datos, sin archivos) - VERSIÓN OPTIMIZADA CON ZONA HORARIA CORREGIDA
+ */
 export const guardarConciliacionData = async (req, res) => {
-    console.log('guardarConciliacionData llamado - VERSIÓN OPTIMIZADA');
+    console.log('guardarConciliacionData llamado - VERSIÓN OPTIMIZADA CON ZONA HORARIA ARGENTINA');
     
     // Obtener una conexión desde el pool
     let connection;
@@ -814,7 +817,8 @@ export const guardarConciliacionData = async (req, res) => {
         const machineIds = resultados.map(m => m.machineId).filter(Boolean);
         
         if (machineIds.length > 0 && !forceUpdate) {
-            const today = new Date().toISOString().split('T')[0]; // formato YYYY-MM-DD
+            // Obtener fecha ajustada para Argentina (GMT-3)
+            const { fecha } = obtenerFechaHoraArgentina();
             
             const queryExistentesToday = `
                 SELECT maquina 
@@ -825,7 +829,7 @@ export const guardarConciliacionData = async (req, res) => {
             
             const [existingMachinesToday] = await connection.query(
                 queryExistentesToday, 
-                [...machineIds, today]
+                [...machineIds, fecha]
             );
             
             if (existingMachinesToday.length > 0) {
@@ -847,6 +851,9 @@ export const guardarConciliacionData = async (req, res) => {
         // Calcular diferencia
         const diferencia = (parseFloat(totalContado) || 0) - (parseFloat(totalEsperado) || 0);
         
+        // Obtener fecha y hora con zona horaria Argentina
+        const { fecha, hora, fechaCompleta } = obtenerFechaHoraArgentina();
+        
         // 1. INSERTAR EN LA TABLA PRINCIPAL
         // Aseguramos que cada campo tiene el tipo correcto y no es undefined
         const [result] = await connection.execute(
@@ -855,13 +862,15 @@ export const guardarConciliacionData = async (req, res) => {
             total_esperado, total_contado, diferencia, maquinas_totales, 
             maquinas_coincidentes, maquinas_discrepancia, maquinas_faltantes, 
             maquinas_extra, comentarios, archivo_dat, archivo_xls) 
-            VALUES (CURDATE(), CURTIME(), ?, ?, ?, ?, 
-            ${confirmada ? 'NOW()' : 'NULL'}, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)`,
             [
+                fecha, // En lugar de CURDATE()
+                hora, // En lugar de CURTIME()
                 zona, 
                 usuario, 
                 confirmada ? 1 : 0,
                 confirmada ? usuario : null, // Usuario de confirmación
+                confirmada ? fechaCompleta : null, // Fecha ajustada si está confirmada
                 parseFloat(totalEsperado) || 0,
                 parseFloat(totalContado) || 0,
                 diferencia,
@@ -938,16 +947,19 @@ export const guardarConciliacionData = async (req, res) => {
             
             console.log(`De ${machineIds.length} máquinas, ${existingMachines.length} ya existen en la tabla`);
             
+            // Crear una marca de tiempo común para todas las máquinas con zona horaria ajustada
+            const fechaHoraConciliacion = `${fecha} ${hora}`;
+            
             // Si estamos en modo forzado y es el mismo día, primero eliminamos los registros existentes
             if (forceUpdate) {
-                const today = new Date().toISOString().split('T')[0]; // formato YYYY-MM-DD
+                // Usar la fecha ajustada a Argentina
                 
                 // Eliminar registros de hoy para estas máquinas
                 for (const machineId of existingMachineIds) {
                     await connection.query(
                         `DELETE FROM maquinas_tesorero 
                          WHERE maquina = ? AND DATE(fecha_conciliacion) = ?`,
-                        [machineId, today]
+                        [machineId, fecha]
                     );
                 }
                 
@@ -965,7 +977,7 @@ export const guardarConciliacionData = async (req, res) => {
                 const tieneNovedad = machine.status === 'DISCREPANCY' || Math.abs(diferencia) > 0.01;
                 
                 // Todas son nuevas inserciones ahora
-                insertBatch.push('(?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)');
+                insertBatch.push('(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
                 insertParams.push(
                     machine.machineId,
                     machine.headercard || null,
@@ -975,6 +987,7 @@ export const guardarConciliacionData = async (req, res) => {
                     parseFloat(machine.countedAmount) || 0,
                     diferencia,
                     machine.status || 'UNKNOWN',
+                    fechaHoraConciliacion, // Usar fecha y hora ajustada
                     confirmada ? 1 : 0,
                     usuario,
                     tieneNovedad ? 1 : 0
@@ -1003,7 +1016,7 @@ export const guardarConciliacionData = async (req, res) => {
         io.emit('nuevaConciliacion', { 
             id: conciliacionId, 
             zona, 
-            fecha: new Date(), 
+            fecha: fechaCompleta, 
             confirmada 
         });
         
@@ -1014,7 +1027,7 @@ export const guardarConciliacionData = async (req, res) => {
         
         return res.status(201).json({ 
             success: true, 
-            message: 'Conciliación guardada correctamente (optimizado)', 
+            message: 'Conciliación guardada correctamente (optimizado con zona horaria Argentina)', 
             id: conciliacionId 
         });
         
