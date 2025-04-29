@@ -5,343 +5,173 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
-// Define __dirname in modules ES
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-/**
- * Guardar una nueva conciliación de zona
- */
 export const guardarConciliacionZona = async (req, res) => {
     console.log('guardarConciliacionZona llamado');
-    console.log('Headers:', req.headers);
 
-    // Log del cuerpo dependiendo del content-type
     const contentType = req.headers['content-type'] || '';
+    let conciliacionData;
+
     if (contentType.includes('multipart/form-data')) {
-        console.log('Recibido como multipart/form-data');
-        console.log('req.body:', req.body);
-        console.log('req.files:', req.files ? Object.keys(req.files) : 'No hay archivos');
+        if (req.body.data) {
+            try {
+                conciliacionData = JSON.parse(req.body.data);
+            } catch (error) {
+                return res.status(400).json({ success: false, message: 'Datos JSON inválidos', error: error.message });
+            }
+        } else {
+            return res.status(400).json({ success: false, message: 'Campo "data" faltante' });
+        }
     } else {
-        console.log('Recibido como application/json');
-        console.log('req.body:', req.body);
+        conciliacionData = req.body;
     }
 
-    // Obtener una conexión desde el pool
+    const {
+        zona,
+        usuario,
+        totalEsperado,
+        totalContado,
+        maquinasTotales,
+        maquinasCoincidentes,
+        maquinasDiscrepancia,
+        maquinasFaltantes,
+        maquinasExtra,
+        comentarios,
+        resultados,
+        confirmada = false
+    } = conciliacionData;
+
+    if (!zona || !usuario) {
+        return res.status(400).json({ success: false, message: 'Faltan zona o usuario' });
+    }
+
+    if (!Array.isArray(resultados)) {
+        return res.status(400).json({ success: false, message: '"resultados" debe ser un array' });
+    }
+
     let connection;
     try {
         connection = await pool.getConnection();
         await connection.beginTransaction();
 
-        // Parsear los datos según el tipo de contenido
-        let conciliacionData;
-
-        if (contentType.includes('multipart/form-data')) {
-            // Si los datos se enviaron como parte de un FormData
-            if (req.body.data) {
-                try {
-                    conciliacionData = JSON.parse(req.body.data);
-                } catch (error) {
-                    console.error('Error al parsear JSON en req.body.data:', error);
-                    return res.status(400).json({
-                        success: false,
-                        message: 'Datos JSON inválidos en el campo "data"',
-                        error: error.message
-                    });
-                }
-            } else {
-                return res.status(400).json({
-                    success: false,
-                    message: 'No se encontró el campo "data" en el FormData'
-                });
-            }
-        } else {
-            // Si los datos se enviaron directamente como JSON
-            conciliacionData = req.body;
-        }
-
-        // Validar datos requeridos
-        const {
-            zona,
-            usuario,
-            totalEsperado,
-            totalContado,
-            maquinasTotales,
-            maquinasCoincidentes,
-            maquinasDiscrepancia,
-            maquinasFaltantes,
-            maquinasExtra,
-            comentarios,
-            resultados,
-            confirmada = false
-        } = conciliacionData;
-
-        if (!zona || !usuario) {
-            return res.status(400).json({
-                success: false,
-                message: 'Faltan campos requeridos: zona y usuario son obligatorios'
-            });
-        }
-
-        // Validar que resultados sea un array
-        if (!Array.isArray(resultados)) {
-            return res.status(400).json({
-                success: false,
-                message: 'El campo "resultados" debe ser un array'
-            });
-        }
-
-        // Variables para almacenar referencias a los archivos
         let archivoDat = null;
         let archivoXls = null;
 
-        // Procesar archivos si existen
         if (req.files) {
             const uploadDir = path.join(__dirname, '../uploads');
-            // Asegurarse de que exista el directorio de uploads
-            if (!fs.existsSync(uploadDir)) {
-                fs.mkdirSync(uploadDir, { recursive: true });
-            }
+            if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
             if (req.files.archivoDat) {
                 const datFile = req.files.archivoDat;
                 const datFileName = `${zona}_${Date.now()}.dat`;
-                const uploadPath = path.join(uploadDir, datFileName);
-
-                try {
-                    await datFile.mv(uploadPath);
-                    archivoDat = datFileName;
-                    console.log('Archivo DAT guardado en:', uploadPath);
-                } catch (error) {
-                    console.error('Error al guardar el archivo DAT:', error);
-                    throw error;
-                }
+                await datFile.mv(path.join(uploadDir, datFileName));
+                archivoDat = datFileName;
             }
 
             if (req.files.archivoXls) {
                 const xlsFile = req.files.archivoXls;
                 const xlsFileName = `${zona}_${Date.now()}.xlsx`;
-                const uploadPath = path.join(uploadDir, xlsFileName);
-
-                try {
-                    await xlsFile.mv(uploadPath);
-                    archivoXls = xlsFileName;
-                    console.log('Archivo XLS guardado en:', uploadPath);
-                } catch (error) {
-                    console.error('Error al guardar el archivo XLS:', error);
-                    throw error;
-                }
+                await xlsFile.mv(path.join(uploadDir, xlsFileName));
+                archivoXls = xlsFileName;
             }
         }
 
-        // Insertar en la tabla principal utilizando valores por defecto si faltan
+        const diferencia = (totalContado || 0) - (totalEsperado || 0);
+
         const [result] = await connection.execute(
             `INSERT INTO zona_conciliacion 
-            (fecha, hora, zona, usuario, confirmada, fecha_confirmacion, 
-            total_esperado, total_contado, maquinas_totales, 
+            (fecha, hora, zona, usuario, confirmada, usuario_confirmacion, fecha_confirmacion, 
+            total_esperado, total_contado, diferencia, maquinas_totales, 
             maquinas_coincidentes, maquinas_discrepancia, maquinas_faltantes, 
             maquinas_extra, comentarios, archivo_dat, archivo_xls) 
-            VALUES (CURDATE(), CURTIME(), ?, ?, ?, 
-            ${confirmada ? 'NOW()' : 'NULL'}, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            VALUES (CURDATE(), CURTIME(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 zona,
                 usuario,
                 confirmada ? 1 : 0,
+                null, // usuario_confirmacion (se completa al confirmar)
+                confirmada ? new Date() : null,
                 totalEsperado || 0,
                 totalContado || 0,
+                diferencia,
                 maquinasTotales || 0,
                 maquinasCoincidentes || 0,
                 maquinasDiscrepancia || 0,
                 maquinasFaltantes || 0,
                 maquinasExtra || 0,
                 comentarios || '',
-                archivoDat,
-                archivoXls
+                archivoDat || null,
+                archivoXls || null
             ]
         );
 
-        const conciliacionId = result.insertId;
-        console.log('Conciliación guardada con ID:', conciliacionId);
-
-        // Insertar detalles de máquinas si hay resultados y actualizar la tabla del tesorero
+        // Agregado: asegurarse de que resultados tenga las columnas necesarias
         if (resultados.length > 0) {
-            console.log(`Procesando ${resultados.length} registros de máquinas`);
+            const insertBatch = [];
+            const insertParams = [];
 
-            // Modificar esta sección en el método guardarConciliacionZona en zona-conciliacion.controller.js
-
-            // Dentro del bucle de procesamiento de máquinas
             for (const machine of resultados) {
-                try {
-                    // Validar datos mínimos para cada máquina
-                    if (!machine.machineId) {
-                        console.warn('Máquina sin ID, omitiendo:', machine);
-                        continue;
-                    }
+                const diferenciaMaquina = (machine.countedAmount || 0) - (machine.expectedAmount || 0);
+                const tieneNovedad = machine.status === 'DISCREPANCY' || Math.abs(diferenciaMaquina) > 0.01;
 
-                    console.log('Procesando máquina:', JSON.stringify(machine, null, 2));
+                const fechaConciliacion = new Date(); // o podés usar moment o dayjs
 
-                    // Convertir objetos de billetes a JSON
-                    const detallesBilletes = JSON.stringify({
-                        billetesFisicos: machine.billetesFisicos || {},
-                        billetesVirtuales: machine.billetesVirtuales || {}
-                    });
+                insertBatch.push('(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                insertParams.push(
+                    machine.machineId,
+                    machine.headercard || null,
+                    machine.location || null,
+                    zona,
+                    machine.expectedAmount || 0,
+                    machine.countedAmount || 0,
+                    diferenciaMaquina,
+                    machine.status || 'UNKNOWN',
+                    fechaConciliacion, // ✅ acá va
+                    confirmada ? 1 : 0,
+                    usuario,
+                    tieneNovedad ? 1 : 0
+                );
 
-                    // 1. Insertar en la tabla de detalles de conciliación
-                    await connection.execute(
-                        `INSERT INTO zona_conciliacion_detalle 
-            (conciliacion_id, maquina, headercard, location, 
-            valor_esperado, valor_contado, valor_fisico, valor_virtual, 
-            estado, detalles_billetes) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                        [
-                            conciliacionId,
-                            machine.machineId,
-                            machine.headercard || null,
-                            machine.location || null,
-                            machine.expectedAmount || 0,
-                            machine.countedAmount || 0,
-                            machine.countedPhysical || 0,
-                            machine.countedVirtual || 0,
-                            machine.status || 'UNKNOWN',
-                            detallesBilletes
-                        ]
-                    );
-
-                    // 2. Actualizar la tabla maquinas_tesorero (insertar o actualizar)
-                    const diferencia = (machine.countedAmount || 0) - (machine.expectedAmount || 0);
-                    const tieneNovedad = machine.status === 'DISCREPANCY' || Math.abs(diferencia) > 0.01;
-
-                    // Comprobar si la máquina ya existe en la tabla
-                    const [existingMachine] = await connection.execute(
-                        'SELECT id FROM maquinas_tesorero WHERE maquina = ?',
-                        [machine.machineId]
-                    );
-
-                    console.log(`Máquina ${machine.machineId}: ${existingMachine.length > 0 ? 'Actualizando' : 'Insertando nuevo'} registro`);
-
-                    if (existingMachine.length > 0) {
-                        // Actualizar registro existente
-                        const updateQuery = `
-                UPDATE maquinas_tesorero SET 
-                headercard = ?,
-                location = ?,
-                zona = ?,
-                valor_esperado = ?,
-                valor_contado = ?,
-                diferencia = ?,
-                estado = ?,
-                fecha_conciliacion = NOW(),
-                conciliado = ?,
-                usuario_conciliacion = ?,
-                tiene_novedad = ?
-                WHERE maquina = ?
-            `;
-                        const updateParams = [
-                            machine.headercard || null,
-                            machine.location || null,
-                            zona,
-                            machine.expectedAmount || 0,
-                            machine.countedAmount || 0,
-                            diferencia,
-                            machine.status || 'UNKNOWN',
-                            confirmada ? 1 : 0,
-                            usuario,
-                            tieneNovedad ? 1 : 0,
-                            machine.machineId
-                        ];
-
-                        console.log('Ejecutando update con parámetros:', updateParams);
-
-                        try {
-                            await connection.execute(updateQuery, updateParams);
-                            console.log(`Máquina ${machine.machineId} actualizada correctamente`);
-                        } catch (updateError) {
-                            console.error(`Error al actualizar máquina ${machine.machineId}:`, updateError);
-                            throw updateError;
-                        }
-                    } else {
-                        // Insertar nuevo registro
-                        const insertQuery = `
-                INSERT INTO maquinas_tesorero 
-                (maquina, headercard, location, zona, valor_esperado, valor_contado, diferencia, 
-                estado, fecha_conciliacion, conciliado, usuario_conciliacion, tiene_novedad)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)
-            `;
-                        const insertParams = [
-                            machine.machineId,
-                            machine.headercard || null,
-                            machine.location || null,
-                            zona,
-                            machine.expectedAmount || 0,
-                            machine.countedAmount || 0,
-                            diferencia,
-                            machine.status || 'UNKNOWN',
-                            confirmada ? 1 : 0,
-                            usuario,
-                            tieneNovedad ? 1 : 0
-                        ];
-
-                        console.log('Ejecutando insert con parámetros:', insertParams);
-
-                        try {
-                            await connection.execute(insertQuery, insertParams);
-                            console.log(`Máquina ${machine.machineId} insertada correctamente`);
-                        } catch (insertError) {
-                            console.error(`Error al insertar máquina ${machine.machineId}:`, insertError);
-                            throw insertError;
-                        }
-                    }
-                } catch (error) {
-                    console.error('Error al procesar máquina:', error);
-                    console.error('Detalles de la máquina con error:', JSON.stringify(machine, null, 2));
-                    throw error;
-                }
             }
+
+            const insertQuery = `
+              INSERT INTO maquinas_tesorero 
+              (maquina, headercard, location, zona, valor_esperado, valor_contado, diferencia, 
+              estado, fecha_conciliacion, conciliado, usuario_conciliacion, tiene_novedad)
+              VALUES ${insertBatch.join(',')}
+              ON DUPLICATE KEY UPDATE
+              headercard = VALUES(headercard),
+              location = VALUES(location),
+              zona = VALUES(zona),
+              valor_esperado = VALUES(valor_esperado),
+              valor_contado = VALUES(valor_contado),
+              diferencia = VALUES(diferencia),
+              estado = VALUES(estado),
+              fecha_conciliacion = NOW(),
+              conciliado = VALUES(conciliado),
+              usuario_conciliacion = VALUES(usuario_conciliacion),
+              tiene_novedad = VALUES(tiene_novedad)
+            `;
+
+            await connection.query(insertQuery, insertParams);
         }
 
-        // Commit de la transacción
+
         await connection.commit();
-
-        // Emitir evento de Socket.IO para actualizar en tiempo real
-        io.emit('nuevaConciliacion', {
-            id: conciliacionId,
-            zona,
-            fecha: new Date(),
-            confirmada
-        });
-
-        // Emitir evento para actualización de dashboard del tesorero
-        io.emit('actualizacionMaquinasTesorero', {
-            zona,
-            cantidadActualizada: resultados.length
-        });
-
-        return res.status(201).json({
-            success: true,
-            message: 'Conciliación guardada correctamente',
-            id: conciliacionId
-        });
+        return res.status(201).json({ success: true, message: 'Conciliación guardada correctamente', id: result.insertId });
 
     } catch (error) {
-        // Rollback en caso de error
-        if (connection) {
-            await connection.rollback();
-        }
-
-        console.error('Error al guardar conciliación de zona:', error);
-        return res.status(500).json({
-            success: false,
-            message: 'Error al guardar la conciliación',
-            error: error.message,
-            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-        });
+        if (connection) await connection.rollback();
+        console.error('Error al guardar conciliación:', error);
+        return res.status(500).json({ success: false, message: 'Error al guardar la conciliación', error: error.message });
     } finally {
-        // Liberar la conexión
-        if (connection) {
-            connection.release();
-        }
+        if (connection) connection.release();
     }
 };
+
+
 
 /**
  * Confirmar una conciliación de zona existente
@@ -355,7 +185,7 @@ export const confirmarConciliacionZona = async (req, res) => {
         connection = await pool.getConnection();
         await connection.beginTransaction();
 
-        const { id, usuario } = req.body;
+        const { id, usuario, comentarios } = req.body;
 
         if (!id || !usuario) {
             return res.status(400).json({
@@ -364,9 +194,9 @@ export const confirmarConciliacionZona = async (req, res) => {
             });
         }
 
-        // Verificar que la conciliación existe
+        // Verificar que la conciliación existe y no está ya confirmada
         const [conciliacion] = await connection.query(
-            'SELECT id, zona FROM zona_conciliacion WHERE id = ?',
+            'SELECT id, zona, confirmada FROM zona_conciliacion WHERE id = ?',
             [id]
         );
 
@@ -377,11 +207,26 @@ export const confirmarConciliacionZona = async (req, res) => {
             });
         }
 
-        // Actualizar estado a confirmada
-        await connection.query(
-            'UPDATE zona_conciliacion SET confirmada = TRUE, fecha_confirmacion = NOW(), usuario_confirmacion = ? WHERE id = ?',
-            [usuario, id]
-        );
+        // Verificar si ya está confirmada
+        if (conciliacion[0].confirmada) {
+            return res.status(400).json({
+                success: false,
+                message: 'Esta conciliación ya ha sido confirmada previamente'
+            });
+        }
+
+        // Actualizar estado a confirmada - Incluir comentarios si están presentes
+        const updateQuery = comentarios 
+            ? 'UPDATE zona_conciliacion SET confirmada = TRUE, fecha_confirmacion = NOW(), usuario_confirmacion = ?, comentarios = ? WHERE id = ?'
+            : 'UPDATE zona_conciliacion SET confirmada = TRUE, fecha_confirmacion = NOW(), usuario_confirmacion = ? WHERE id = ?';
+        
+        const updateParams = comentarios 
+            ? [usuario, comentarios, id]
+            : [usuario, id];
+            
+        await connection.query(updateQuery, updateParams);
+        
+        console.log(`Conciliación ${id} marcada como confirmada por ${usuario}`);
 
         // Obtener detalles de las máquinas de esta conciliación
         const [detalles] = await connection.query(
@@ -389,35 +234,60 @@ export const confirmarConciliacionZona = async (req, res) => {
             [id]
         );
 
-        // Actualizar tabla de máquinas del tesorero
-        for (const detalle of detalles) {
-            await connection.query(
-                `UPDATE maquinas_tesorero SET 
+        console.log(`Actualizando ${detalles.length} máquinas en maquinas_tesorero`);
+
+        // Actualizar tabla de máquinas del tesorero de manera optimizada
+        if (detalles.length > 0) {
+            // Preparar para actualización masiva
+            const maquinasToUpdate = [];
+            const updateParams = [];
+            
+            for (const detalle of detalles) {
+                maquinasToUpdate.push('?');
+                updateParams.push(detalle.maquina);
+            }
+            
+            // Actualizar todas las máquinas de una vez
+            const updateTesoreroQuery = `
+                UPDATE maquinas_tesorero SET 
                 conciliado = 1,
                 usuario_conciliacion = ?,
                 fecha_conciliacion = NOW()
-                WHERE maquina = ?`,
-                [usuario, detalle.maquina]
-            );
+                WHERE maquina IN (${maquinasToUpdate.join(',')})
+            `;
+            
+            await connection.query(updateTesoreroQuery, [usuario, ...updateParams]);
+            console.log(`Actualizadas ${detalles.length} máquinas en la tabla maquinas_tesorero`);
         }
 
+        // Obtener datos actualizados para la respuesta
+        const [conciliacionActualizada] = await connection.query(
+            'SELECT * FROM zona_conciliacion WHERE id = ?',
+            [id]
+        );
+
         await connection.commit();
+        console.log(`Transacción completada con éxito para conciliación ${id}`);
 
         // Emitir evento de actualización
         io.emit('conciliacionConfirmada', {
             id,
-            zona: conciliacion[0].zona
+            zona: conciliacion[0].zona,
+            usuario,
+            fecha: new Date()
         });
 
         // Emitir evento para actualización de dashboard del tesorero
         io.emit('actualizacionMaquinasTesorero', {
             zona: conciliacion[0].zona,
-            confirmada: true
+            confirmada: true,
+            cantidadMaquinas: detalles.length
         });
 
         return res.json({
             success: true,
-            message: 'Conciliación confirmada correctamente'
+            message: 'Conciliación confirmada correctamente',
+            data: conciliacionActualizada[0]
         });
 
     } catch (error) {
@@ -429,7 +299,8 @@ export const confirmarConciliacionZona = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: 'Error al confirmar la conciliación',
-            error: error.message
+            error: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
     } finally {
         if (connection) {
@@ -614,99 +485,124 @@ export const obtenerEstadisticas = async (req, res) => {
 /**
  * Obtener máquinas del tesorero con filtros opcionales
  */
+// Ejemplo de implementación para el controlador que maneja /api/tesorero/maquinas
 export const obtenerMaquinasTesorero = async (req, res) => {
-    console.log('obtenerMaquinasTesorero llamado');
-    console.log('Query params:', req.query);
-
     try {
-        // Opciones de filtrado
+        console.log('obtenerMaquinasTesorero llamado');
+        console.log('Query params:', req.query);
+
         const {
+            fecha,
+            fecha_confirmacion,
             zona,
-            fecha_inicio,
-            fecha_fin,
+            estado,
             conciliado,
             tiene_novedad,
-            estado,
-            limite,
-            pagina
+            pagina = 1,
+            limite = 20
         } = req.query;
 
-        let query = 'SELECT * FROM maquinas_tesorero';
-        const params = [];
-        const conditions = [];
+        // Construir cláusula WHERE
+        let whereClause = '1=1';
+        let params = [];
 
+        // SI SE PROPORCIONA fecha_confirmacion, filtrar máquinas relacionadas con zonas confirmadas en esa fecha
+        if (fecha_confirmacion) {
+            // Obtener IDs de zonas confirmadas en esta fecha
+            const [zonasConfirmadas] = await pool.query(`
+            SELECT id, zona FROM zona_conciliacion 
+            WHERE confirmada = 1 
+            AND DATE(fecha_confirmacion) = ?
+          `, [fecha_confirmacion]); // ✅ SOLO UN PARÁMETRO
+
+
+
+            if (zonasConfirmadas.length > 0) {
+                // Si hay zonas confirmadas en esta fecha, filtrar por ellas
+                const zonasIds = zonasConfirmadas.map(z => z.zona);
+                const placeholders = zonasIds.map(() => '?').join(', ');
+                whereClause += ` AND m.zona IN (${placeholders})`;
+                params.push(...zonasIds); // ✅ USAR SPREAD OPERATOR PARA AÑADIR VARIOS PARÁMETROS
+
+            } else {
+                // Si no hay zonas confirmadas en esta fecha, asegurar que no se devuelvan resultados
+                // Este es el cambio clave: no devolver máquinas si no hay zonas confirmadas
+                whereClause += ` AND FALSE`;
+            }
+        }
+        // Si no hay fecha_confirmacion pero hay fecha, filtrar por la fecha de conciliación
+        else if (fecha) {
+            whereClause += ` AND DATE(m.fecha_conciliacion) = ?`;
+            params.push(fecha);
+        }
+
+        // Añadir otros filtros si están presentes
         if (zona) {
-            conditions.push('zona = ?');
+            whereClause += ` AND m.zona = ?`;
             params.push(zona);
         }
 
-        if (fecha_inicio) {
-            conditions.push('fecha_conciliacion >= ?');
-            params.push(fecha_inicio);
-        }
-
-        if (fecha_fin) {
-            conditions.push('fecha_conciliacion <= ?');
-            params.push(fecha_fin);
-        }
-
-        if (conciliado !== undefined) {
-            conditions.push('conciliado = ?');
-            params.push(conciliado === 'true' || conciliado === '1' ? 1 : 0);
-        }
-
-        if (tiene_novedad !== undefined) {
-            conditions.push('tiene_novedad = ?');
-            params.push(tiene_novedad === 'true' || tiene_novedad === '1' ? 1 : 0);
-        }
-
         if (estado) {
-            conditions.push('estado = ?');
+            whereClause += ` AND m.estado = ?`;
             params.push(estado);
         }
 
-        if (conditions.length > 0) {
-            query += ' WHERE ' + conditions.join(' AND ');
+        if (conciliado !== undefined) {
+            whereClause += ` AND m.conciliado = ?`;
+            params.push(conciliado);
         }
 
-        // Contar total de registros para paginación
-        const countQuery = query.replace('SELECT *', 'SELECT COUNT(*) as total');
-        const [countResult] = await pool.query(countQuery, params);
-        const totalRegistros = countResult[0].total;
-
-        // Ordenar y aplicar paginación
-        query += ' ORDER BY ultima_actualizacion DESC';
-
-        // Aplicar límite y paginación si se solicitan
-        if (limite) {
-            const limiteNum = parseInt(limite);
-            query += ' LIMIT ?';
-            params.push(limiteNum);
-
-            if (pagina) {
-                const paginaNum = parseInt(pagina);
-                const offset = (paginaNum - 1) * limiteNum;
-                query += ' OFFSET ?';
-                params.push(offset);
-            }
+        if (tiene_novedad !== undefined) {
+            whereClause += ` AND m.tiene_novedad = ?`;
+            params.push(tiene_novedad);
         }
 
-        const [result] = await pool.query(query, params);
-        console.log(`Encontradas ${result.length} máquinas del tesorero`);
+        // Obtener el total de registros para paginación
+        const [countResult] = await pool.query(`
+        SELECT COUNT(*) as total 
+        FROM maquinas_tesorero m
+        WHERE ${whereClause}
+      `, params);
 
-        return res.json({
-            total: totalRegistros,
-            pagina: pagina ? parseInt(pagina) : 1,
-            limite: limite ? parseInt(limite) : totalRegistros,
-            data: result
+        const total = countResult[0].total || 0;
+
+        // Si no hay resultados, devolver array vacío
+        if (total === 0) {
+            return res.status(200).json({
+                total: 0,
+                pagina: parseInt(pagina),
+                limite: parseInt(limite),
+                data: []
+            });
+        }
+
+        // Calcular offset para paginación
+        const offset = (parseInt(pagina) - 1) * parseInt(limite);
+
+        // Obtener los registros paginados
+        const [maquinas] = await pool.query(`
+        SELECT * 
+        FROM maquinas_tesorero m
+        WHERE ${whereClause}
+        ORDER BY m.zona, m.maquina
+        LIMIT ?, ?
+      `, [...params, offset, parseInt(limite)]);
+
+        console.log(`Encontradas ${maquinas.length} máquinas del tesorero`);
+
+        // Devolver resultados con metadata de paginación
+        return res.status(200).json({
+            total,
+            pagina: parseInt(pagina),
+            limite: parseInt(limite),
+            data: maquinas
         });
 
     } catch (error) {
         console.error('Error al obtener máquinas del tesorero:', error);
-        return res.status(500).json({
-            success: false,
-            message: 'Error al obtener las máquinas del tesorero',
-            error: error.message
+        res.status(500).json({
+            error: 'Error interno del servidor',
+            message: 'Ocurrió un error al obtener las máquinas.'
         });
     }
 };
@@ -852,6 +748,10 @@ export const guardarConciliacionData = async (req, res) => {
         // Obtener datos directamente del cuerpo de la solicitud
         const conciliacionData = req.body;
         
+        // Comprobar si debemos forzar la actualización (sobreescribir registros existentes)
+        const forceUpdate = conciliacionData.forceUpdate === true;
+        console.log(`Modo de actualización forzada: ${forceUpdate ? 'ACTIVADO' : 'DESACTIVADO'}`);
+        
         // Validar datos requeridos
         const {
             zona,
@@ -885,26 +785,66 @@ export const guardarConciliacionData = async (req, res) => {
         
         console.log(`Procesando ${resultados.length} máquinas en modo optimizado`);
         
+        // Verificar si hay máquinas que ya han sido conciliadas hoy
+        const machineIds = resultados.map(m => m.machineId).filter(Boolean);
+        
+        if (machineIds.length > 0 && !forceUpdate) {
+            const today = new Date().toISOString().split('T')[0]; // formato YYYY-MM-DD
+            
+            const queryExistentesToday = `
+                SELECT maquina 
+                FROM maquinas_tesorero 
+                WHERE maquina IN (${machineIds.map(() => '?').join(',')})
+                AND DATE(fecha_conciliacion) = ?
+            `;
+            
+            const [existingMachinesToday] = await connection.query(
+                queryExistentesToday, 
+                [...machineIds, today]
+            );
+            
+            if (existingMachinesToday.length > 0) {
+                // Hay máquinas que ya han sido conciliadas hoy
+                const existingMachineIds = existingMachinesToday.map(m => m.maquina);
+                
+                console.log(`Se encontraron ${existingMachinesToday.length} máquinas ya conciliadas hoy`);
+                
+                return res.status(409).json({
+                    success: false,
+                    message: 'Algunas máquinas ya han sido conciliadas hoy',
+                    needsConfirmation: true,
+                    existingMachines: existingMachineIds,
+                    totalExisting: existingMachinesToday.length
+                });
+            }
+        }
+        
+        // Calcular diferencia
+        const diferencia = (parseFloat(totalContado) || 0) - (parseFloat(totalEsperado) || 0);
+        
         // 1. INSERTAR EN LA TABLA PRINCIPAL
+        // Aseguramos que cada campo tiene el tipo correcto y no es undefined
         const [result] = await connection.execute(
             `INSERT INTO zona_conciliacion 
-            (fecha, hora, zona, usuario, confirmada, fecha_confirmacion, 
-            total_esperado, total_contado, maquinas_totales, 
+            (fecha, hora, zona, usuario, confirmada, usuario_confirmacion, fecha_confirmacion, 
+            total_esperado, total_contado, diferencia, maquinas_totales, 
             maquinas_coincidentes, maquinas_discrepancia, maquinas_faltantes, 
             maquinas_extra, comentarios, archivo_dat, archivo_xls) 
-            VALUES (CURDATE(), CURTIME(), ?, ?, ?, 
-            ${confirmada ? 'NOW()' : 'NULL'}, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)`,
+            VALUES (CURDATE(), CURTIME(), ?, ?, ?, ?, 
+            ${confirmada ? 'NOW()' : 'NULL'}, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)`,
             [
                 zona, 
                 usuario, 
                 confirmada ? 1 : 0,
-                totalEsperado || 0, 
-                totalContado || 0, 
-                maquinasTotales || 0, 
-                maquinasCoincidentes || 0,
-                maquinasDiscrepancia || 0, 
-                maquinasFaltantes || 0, 
-                maquinasExtra || 0,
+                confirmada ? usuario : null, // Usuario de confirmación
+                parseFloat(totalEsperado) || 0,
+                parseFloat(totalContado) || 0,
+                diferencia,
+                parseInt(maquinasTotales) || 0, 
+                parseInt(maquinasCoincidentes) || 0,
+                parseInt(maquinasDiscrepancia) || 0, 
+                parseInt(maquinasFaltantes) || 0, 
+                parseInt(maquinasExtra) || 0,
                 comentarios || ''
             ]
         );
@@ -924,15 +864,19 @@ export const guardarConciliacionData = async (req, res) => {
                 detallesValues.push('(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
                 detallesParams.push(
                     conciliacionId,
-                    machine.machineId,
+                    machine.machineId || '',
                     machine.headercard || null,
                     machine.location || null,
-                    machine.expectedAmount || 0,
-                    machine.countedAmount || 0,
-                    machine.countedPhysical || 0,
-                    machine.countedVirtual || 0,
+                    parseFloat(machine.expectedAmount) || 0,
+                    parseFloat(machine.countedAmount) || 0,
+                    parseFloat(machine.countedPhysical) || 0,
+                    parseFloat(machine.countedVirtual) || 0,
                     machine.status || 'UNKNOWN',
-                    '{}'
+                    // Convertir los objetos de billetes a JSON
+                    JSON.stringify({
+                      billetesFisicos: machine.billetesFisicos || {},
+                      billetesVirtuales: machine.billetesVirtuales || {}
+                    })
                 );
             });
             
@@ -953,7 +897,15 @@ export const guardarConciliacionData = async (req, res) => {
             
             // 3. ACTUALIZAR/INSERTAR EN TABLA MAQUINAS_TESORERO
             // Primero, obtener todas las máquinas existentes en una sola consulta para optimizar
-            const machineIds = resultados.map(m => m.machineId).filter(Boolean);
+            if (machineIds.length === 0) {
+                await connection.commit();
+                return res.status(201).json({ 
+                    success: true, 
+                    message: 'Conciliación guardada correctamente (sin máquinas válidas)', 
+                    id: conciliacionId 
+                });
+            }
+            
             const queryExistentes = `SELECT maquina FROM maquinas_tesorero WHERE maquina IN (${machineIds.map(() => '?').join(',')})`;
             
             const [existingMachines] = await connection.query(queryExistentes, machineIds);
@@ -961,81 +913,50 @@ export const guardarConciliacionData = async (req, res) => {
             
             console.log(`De ${machineIds.length} máquinas, ${existingMachines.length} ya existen en la tabla`);
             
-            // Preparar lotes para actualización e inserción
-            const updateBatch = [];
-            const updateParams = [];
+            // Si estamos en modo forzado y es el mismo día, primero eliminamos los registros existentes
+            if (forceUpdate) {
+                const today = new Date().toISOString().split('T')[0]; // formato YYYY-MM-DD
+                
+                // Eliminar registros de hoy para estas máquinas
+                for (const machineId of existingMachineIds) {
+                    await connection.query(
+                        `DELETE FROM maquinas_tesorero 
+                         WHERE maquina = ? AND DATE(fecha_conciliacion) = ?`,
+                        [machineId, today]
+                    );
+                }
+                
+                console.log(`Se eliminaron los registros de hoy para ${existingMachineIds.size} máquinas`);
+            }
+            
+            // Ahora todas son inserciones nuevas
             const insertBatch = [];
             const insertParams = [];
             
             resultados.forEach(machine => {
                 if (!machine.machineId) return;
                 
-                const diferencia = (machine.countedAmount || 0) - (machine.expectedAmount || 0);
+                const diferencia = (parseFloat(machine.countedAmount) || 0) - (parseFloat(machine.expectedAmount) || 0);
                 const tieneNovedad = machine.status === 'DISCREPANCY' || Math.abs(diferencia) > 0.01;
                 
-                if (existingMachineIds.has(machine.machineId)) {
-                    // Para actualizar
-                    updateBatch.push('(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-                    updateParams.push(
-                        machine.machineId,
-                        machine.headercard || null,
-                        machine.location || null,
-                        zona,
-                        machine.expectedAmount || 0,
-                        machine.countedAmount || 0,
-                        diferencia,
-                        machine.status || 'UNKNOWN',
-                        confirmada ? 1 : 0,
-                        usuario,
-                        tieneNovedad ? 1 : 0
-                    );
-                } else {
-                    // Para insertar
-                    insertBatch.push('(?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)');
-                    insertParams.push(
-                        machine.machineId,
-                        machine.headercard || null,
-                        machine.location || null,
-                        zona,
-                        machine.expectedAmount || 0,
-                        machine.countedAmount || 0,
-                        diferencia,
-                        machine.status || 'UNKNOWN',
-                        confirmada ? 1 : 0,
-                        usuario,
-                        tieneNovedad ? 1 : 0
-                    );
-                }
+                // Todas son nuevas inserciones ahora
+                insertBatch.push('(?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)');
+                insertParams.push(
+                    machine.machineId,
+                    machine.headercard || null,
+                    machine.location || null,
+                    zona,
+                    parseFloat(machine.expectedAmount) || 0,
+                    parseFloat(machine.countedAmount) || 0,
+                    diferencia,
+                    machine.status || 'UNKNOWN',
+                    confirmada ? 1 : 0,
+                    usuario,
+                    tieneNovedad ? 1 : 0
+                );
             });
             
-            // Ejecutar actualizaciones masivas si hay registros a actualizar
-            if (updateBatch.length > 0) {
-                // Usamos una consulta más avanzada que actualiza múltiples registros a la vez
-                const updateQuery = `
-                    INSERT INTO maquinas_tesorero 
-                    (maquina, headercard, location, zona, valor_esperado, valor_contado, diferencia, 
-                    estado, fecha_conciliacion, conciliado, usuario_conciliacion, tiene_novedad)
-                    VALUES ${updateBatch.join(',')}
-                    ON DUPLICATE KEY UPDATE
-                    headercard = VALUES(headercard),
-                    location = VALUES(location),
-                    zona = VALUES(zona),
-                    valor_esperado = VALUES(valor_esperado),
-                    valor_contado = VALUES(valor_contado),
-                    diferencia = VALUES(diferencia),
-                    estado = VALUES(estado),
-                    fecha_conciliacion = NOW(),
-                    conciliado = VALUES(conciliado),
-                    usuario_conciliacion = VALUES(usuario_conciliacion),
-                    tiene_novedad = VALUES(tiene_novedad)
-                `;
-                
-                console.log(`Ejecutando actualización masiva de ${updateBatch.length} máquinas...`);
-                await connection.query(updateQuery, updateParams);
-                console.log('Actualización masiva completada');
-            }
-            
-            // Ejecutar inserciones masivas si hay registros a insertar
+            // Ejecutar inserciones si hay registros a insertar
             if (insertBatch.length > 0) {
                 const insertQuery = `
                     INSERT INTO maquinas_tesorero 
@@ -1044,9 +965,9 @@ export const guardarConciliacionData = async (req, res) => {
                     VALUES ${insertBatch.join(',')}
                 `;
                 
-                console.log(`Ejecutando inserción masiva de ${insertBatch.length} nuevas máquinas...`);
+                console.log(`Ejecutando inserción de ${insertBatch.length} máquinas...`);
                 await connection.query(insertQuery, insertParams);
-                console.log('Inserción masiva de nuevas máquinas completada');
+                console.log('Inserción de máquinas completada');
             }
         }
         
@@ -1099,7 +1020,7 @@ export const guardarConciliacionData = async (req, res) => {
  */
 export const obtenerResumenPorZonas = async (req, res) => {
     console.log('obtenerResumenPorZonas llamado');
-    
+
     try {
         // Obtener resumen de la tabla zona_conciliacion agrupado por zona
         const query = `
@@ -1122,20 +1043,20 @@ export const obtenerResumenPorZonas = async (req, res) => {
             ORDER BY 
                 MAX(fecha) DESC, MAX(hora) DESC
         `;
-        
+
         const [result] = await pool.query(query);
-        
+
         return res.json({
             success: true,
             data: result
         });
-        
+
     } catch (error) {
         console.error('Error al obtener resumen por zonas:', error);
-        return res.status(500).json({ 
-            success: false, 
-            message: 'Error al obtener resumen por zonas', 
-            error: error.message 
+        return res.status(500).json({
+            success: false,
+            message: 'Error al obtener resumen por zonas',
+            error: error.message
         });
     }
 };
