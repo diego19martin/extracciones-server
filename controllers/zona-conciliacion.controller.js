@@ -759,9 +759,6 @@ export const sincronizarMaquinasTesorero = async (req, res) => {
 };
 
 /**
- * Guardar una nueva conciliación de zona (solo datos, sin archivos) - VERSIÓN OPTIMIZADA
- */
-/**
  * Guardar una nueva conciliación de zona (solo datos, sin archivos) - VERSIÓN OPTIMIZADA CON ZONA HORARIA CORREGIDA
  */
 export const guardarConciliacionData = async (req, res) => {
