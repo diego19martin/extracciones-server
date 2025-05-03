@@ -762,7 +762,7 @@ export const sincronizarMaquinasTesorero = async (req, res) => {
  * Guardar una nueva conciliación de zona (solo datos, sin archivos) - VERSIÓN OPTIMIZADA CON ZONA HORARIA CORREGIDA
  */
 export const guardarConciliacionData = async (req, res) => {
-    console.log('guardarConciliacionData llamado - VERSIÓN OPTIMIZADA CON ZONA HORARIA ARGENTINA');
+    console.log('guardarConciliacionData llamado - VERSION MODIFICADA CON VALIDACIÓN DE MÁQUINAS');
     
     // Obtener una conexión desde el pool
     let connection;
@@ -808,10 +808,96 @@ export const guardarConciliacionData = async (req, res) => {
             });
         }
         
-        console.log(`Procesando ${resultados.length} máquinas en modo optimizado`);
+        console.log(`Procesando ${resultados.length} máquinas con validación`);
+        
+        // ============ CAMBIO: VALIDAR MÁQUINAS CONTRA listado_filtrado ============
+        // Obtener IDs de todas las máquinas en el archivo
+        const allMachineIds = resultados.map(m => m.machineId).filter(Boolean);
+        
+        console.log(`Validando ${allMachineIds.length} máquinas contra listado_filtrado...`);
+        
+        // Consultar cuáles de estas máquinas existen en listado_filtrado
+        const queryExistingMachines = `
+            SELECT maquina 
+            FROM listado_filtrado 
+            WHERE maquina IN (${allMachineIds.map(() => '?').join(',')})
+        `;
+        
+        const [existingMachines] = await connection.query(
+            queryExistingMachines, 
+            allMachineIds
+        );
+        
+        // Crear un Set con las máquinas válidas para búsqueda rápida
+        const validMachineIds = new Set(existingMachines.map(m => m.maquina));
+        
+        console.log(`Encontradas ${validMachineIds.size} máquinas válidas en listado_filtrado`);
+        
+        // Filtrar los resultados para incluir solo máquinas válidas
+        const validatedResults = resultados.filter(machine => 
+            validMachineIds.has(machine.machineId)
+        );
+        
+        const invalidMachines = resultados.filter(machine => 
+            !validMachineIds.has(machine.machineId)
+        );
+        
+        console.log(`Máquinas válidas: ${validatedResults.length}, Máquinas inválidas/no registradas: ${invalidMachines.length}`);
+        
+        // Registrar las máquinas inválidas en el log para su revisión
+        if (invalidMachines.length > 0) {
+            console.log('Máquinas no encontradas en listado_filtrado:');
+            invalidMachines.forEach(machine => {
+                console.log(`- Máquina ID: ${machine.machineId}, Valor contado: ${machine.countedAmount || 0}`);
+            });
+        }
+        
+        // Actualizar las propiedades de la conciliación con base en las máquinas validadas
+        // Recalcular totales solo con máquinas válidas
+        let recalculatedTotalCounted = 0;
+        let recalculatedExpected = 0;
+        let matchingCount = 0;
+        let nonMatchingCount = 0;
+        
+        validatedResults.forEach(machine => {
+            const counted = parseFloat(machine.countedAmount) || 0;
+            const expected = parseFloat(machine.expectedAmount) || 0;
+            
+            recalculatedTotalCounted += counted;
+            recalculatedExpected += expected;
+            
+            // Verificar si coincide o tiene discrepancia
+            if (Math.abs(counted - expected) < 0.01) {
+                matchingCount++;
+            } else {
+                nonMatchingCount++;
+            }
+        });
+        
+        // Actualizar los totales iniciales con los valores recalculados
+        const recalculatedData = {
+            ...conciliacionData,
+            resultados: validatedResults,
+            totalContado: recalculatedTotalCounted,
+            totalEsperado: recalculatedExpected,
+            maquinasTotales: validatedResults.length,
+            maquinasCoincidentes: matchingCount,
+            maquinasDiscrepancia: nonMatchingCount,
+            // Mantener los valores originales de maquinasFaltantes y maquinasExtra
+            maquinasExtra: maquinasExtra
+        };
+        
+        // Calcular la diferencia actualizada
+        const diferencia = recalculatedTotalCounted - recalculatedExpected;
+        
+        // Si estamos filtrando máquinas, advertir al cliente
+        if (invalidMachines.length > 0) {
+            console.log(`Advertencia: Se excluyeron ${invalidMachines.length} máquinas que no están en listado_filtrado`);
+        }
+        // ============ FIN DEL CAMBIO ============
         
         // Verificar si hay máquinas que ya han sido conciliadas hoy
-        const machineIds = resultados.map(m => m.machineId).filter(Boolean);
+        const machineIds = validatedResults.map(m => m.machineId).filter(Boolean);
         
         if (machineIds.length > 0 && !forceUpdate) {
             // Obtener fecha ajustada para Argentina (GMT-3)
@@ -845,9 +931,6 @@ export const guardarConciliacionData = async (req, res) => {
             }
         }
         
-        // Calcular diferencia
-        const diferencia = (parseFloat(totalContado) || 0) - (parseFloat(totalEsperado) || 0);
-        
         // Obtener fecha y hora con zona horaria Argentina
         const { fecha, hora, fechaCompleta } = obtenerFechaHoraArgentina();
         
@@ -868,12 +951,12 @@ export const guardarConciliacionData = async (req, res) => {
                 confirmada ? 1 : 0,
                 confirmada ? usuario : null, // Usuario de confirmación
                 confirmada ? fechaCompleta : null, // Fecha ajustada si está confirmada
-                parseFloat(totalEsperado) || 0,
-                parseFloat(totalContado) || 0,
-                diferencia,
-                parseInt(maquinasTotales) || 0, 
-                parseInt(maquinasCoincidentes) || 0,
-                parseInt(maquinasDiscrepancia) || 0, 
+                parseFloat(recalculatedExpected) || 0,  // Valor recalculado
+                parseFloat(recalculatedTotalCounted) || 0,  // Valor recalculado
+                diferencia,  // Valor recalculado
+                parseInt(validatedResults.length) || 0,  // Valor recalculado
+                parseInt(matchingCount) || 0,  // Valor recalculado
+                parseInt(nonMatchingCount) || 0,  // Valor recalculado
                 parseInt(maquinasFaltantes) || 0, 
                 parseInt(maquinasExtra) || 0,
                 comentarios || ''
@@ -884,12 +967,12 @@ export const guardarConciliacionData = async (req, res) => {
         console.log('Conciliación guardada con ID:', conciliacionId);
         
         // 2. INSERTAR DETALLES DE MÁQUINAS - USANDO INSERCIÓN MASIVA (BULK INSERT)
-        if (resultados.length > 0) {
+        if (validatedResults.length > 0) {  // Usar solo máquinas validadas
             // Preparar valores para la inserción masiva en zona_conciliacion_detalle
             const detallesValues = [];
             const detallesParams = [];
             
-            resultados.forEach(machine => {
+            validatedResults.forEach(machine => {  // Usar solo máquinas validadas
                 if (!machine.machineId) return; // Saltar máquinas sin ID
                 
                 detallesValues.push('(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
@@ -927,7 +1010,6 @@ export const guardarConciliacionData = async (req, res) => {
             }
             
             // 3. ACTUALIZAR/INSERTAR EN TABLA MAQUINAS_TESORERO
-            // Primero, obtener todas las máquinas existentes en una sola consulta para optimizar
             if (machineIds.length === 0) {
                 await connection.commit();
                 return res.status(201).json({ 
@@ -942,7 +1024,7 @@ export const guardarConciliacionData = async (req, res) => {
             const [existingMachines] = await connection.query(queryExistentes, machineIds);
             const existingMachineIds = new Set(existingMachines.map(m => m.maquina));
             
-            console.log(`De ${machineIds.length} máquinas, ${existingMachines.length} ya existen en la tabla`);
+            console.log(`De ${machineIds.length} máquinas válidas, ${existingMachines.length} ya existen en la tabla`);
             
             // Crear una marca de tiempo común para todas las máquinas con zona horaria ajustada
             const fechaHoraConciliacion = `${fecha} ${hora}`;
@@ -967,7 +1049,7 @@ export const guardarConciliacionData = async (req, res) => {
             const insertBatch = [];
             const insertParams = [];
             
-            resultados.forEach(machine => {
+            validatedResults.forEach(machine => {  // Usar solo máquinas validadas
                 if (!machine.machineId) return;
                 
                 const diferencia = (parseFloat(machine.countedAmount) || 0) - (parseFloat(machine.expectedAmount) || 0);
@@ -1009,6 +1091,12 @@ export const guardarConciliacionData = async (req, res) => {
         // Commit de la transacción
         await connection.commit();
         
+        // Construir mensaje de respuesta personalizado
+        let successMessage = 'Conciliación guardada correctamente';
+        if (invalidMachines.length > 0) {
+            successMessage += ` (Se excluyeron ${invalidMachines.length} máquinas no registradas en el sistema)`;
+        }
+        
         // Emitir eventos
         io.emit('nuevaConciliacion', { 
             id: conciliacionId, 
@@ -1019,13 +1107,21 @@ export const guardarConciliacionData = async (req, res) => {
         
         io.emit('actualizacionMaquinasTesorero', {
             zona,
-            cantidadActualizada: resultados.length
+            cantidadActualizada: validatedResults.length
         });
         
         return res.status(201).json({ 
             success: true, 
-            message: 'Conciliación guardada correctamente (optimizado con zona horaria Argentina)', 
-            id: conciliacionId 
+            message: successMessage, 
+            id: conciliacionId,
+            excludedMachines: invalidMachines.length > 0 ? invalidMachines.map(m => m.machineId) : [],
+            stats: {
+                totalMachines: resultados.length,
+                validMachines: validatedResults.length,
+                invalidMachines: invalidMachines.length,
+                originalCount: parseFloat(totalContado) || 0,
+                validatedCount: recalculatedTotalCounted
+            }
         });
         
     } catch (error) {
@@ -1034,7 +1130,7 @@ export const guardarConciliacionData = async (req, res) => {
             await connection.rollback();
         }
         
-        console.error('Error al guardar conciliación de zona (optimizado):', error);
+        console.error('Error al guardar conciliación de zona (con validación):', error);
         return res.status(500).json({ 
             success: false, 
             message: 'Error al guardar la conciliación', 
