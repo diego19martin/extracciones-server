@@ -13,7 +13,6 @@ import {
     addEmployee,
     removeEmployee,
     uploadEmployees,
-    getEmpleados,
     getListadoFiltrado,
     getConfig,
     generateExcelExport
@@ -37,7 +36,7 @@ router.get('/employees', getEmployees);
 router.post('/employees', addEmployee);
 router.delete('/employees/:id', removeEmployee);
 router.post('/employees/upload', uploadEmployees)
-router.get('/empleados', getEmpleados);
+
 
 
 // Nueva ruta para exportar a Excel

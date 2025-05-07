@@ -782,6 +782,8 @@ const enviarCorreoReporte = async (filePath, tipoReporte) => {
 
 
 export const getEmployees = async (req, res) => {
+    console.log('getEmployees');
+    
     try {
         const [employees] = await pool.query('SELECT * FROM empleados ORDER BY nombre ASC');
         res.json(employees);
@@ -827,16 +829,6 @@ export const uploadEmployees = async (req, res) => {
     } catch (error) {
         console.error('Error al cargar empleados:', error);
         res.status(500).json({ error: 'Error al cargar empleados' });
-    }
-};
-
-export const getEmpleados = async (req, res) => {
-    try {
-        const [empleados] = await pool.query('SELECT nombre FROM empleados');
-        res.json(empleados);
-    } catch (error) {
-        console.error('Error al obtener empleados:', error);
-        res.status(500).json({ error: 'Error al obtener empleados' });
     }
 };
 
