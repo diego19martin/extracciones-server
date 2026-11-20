@@ -6,6 +6,8 @@ import crypto from 'crypto';
 import { pool } from '../db.js';
 import { io } from '../index.js';
 import {
+    decodificarAdjunto,
+    describirAdjunto,
     leerExcel,
     normalizarFilas,
     obtenerLimites,
@@ -37,7 +39,19 @@ export const postArchivoAutomatico = async (req, res) => {
 
         let machines;
         if (contenidoBase64) {
-            machines = leerExcel(Buffer.from(String(contenidoBase64), 'base64'));
+            let buffer;
+            try {
+                buffer = decodificarAdjunto(contenidoBase64);
+            } catch (e) {
+                console.error(`Carga automática: adjunto inválido (${e.message}). Recibido: ${describirAdjunto(contenidoBase64)}`);
+                return res.status(400).json({ error: e.message, recibido: describirAdjunto(contenidoBase64) });
+            }
+            try {
+                machines = leerExcel(buffer);
+            } catch (e) {
+                console.error(`Carga automática: no se pudo leer el Excel (${e.message})`);
+                return res.status(400).json({ error: 'No se pudo leer el Excel', details: e.message });
+            }
         } else if (Array.isArray(filas)) {
             machines = normalizarFilas(filas);
         } else {

@@ -50,6 +50,41 @@ export const normalizarFilas = (filas) => {
     return resultado;
 };
 
+const esZip = (buf) => buf && buf.length > 4 && buf[0] === 0x50 && buf[1] === 0x4b; // "PK": .xlsx
+const esOle = (buf) => buf && buf.length > 8 && buf[0] === 0xd0 && buf[1] === 0xcf; // .xls viejo
+const pareceBase64 = (s) => typeof s === 'string' && s.length > 100 && /^[A-Za-z0-9+/=\r\n_-]+$/.test(s.slice(0, 2000));
+
+// Power Automate puede mandar el adjunto de distintas formas según cómo se
+// arme la expresión: base64 directo, objeto {"$content-type","$content"},
+// ese objeto serializado como texto, o base64 de un base64. Devuelve el Buffer
+// del Excel o lanza un error descriptivo.
+export const decodificarAdjunto = (valor) => {
+    let v = valor;
+    if (typeof v === 'string' && v.trim().startsWith('{')) {
+        try { v = JSON.parse(v); } catch (_) { /* no era JSON */ }
+    }
+    if (v && typeof v === 'object' && v.$content) v = v.$content;
+    if (typeof v !== 'string') throw new Error(`Formato de adjunto no reconocido (${typeof v})`);
+
+    let actual = v.trim();
+    for (let i = 0; i < 3; i++) {
+        if (!pareceBase64(actual)) break;
+        const buf = Buffer.from(actual, 'base64');
+        if (esZip(buf) || esOle(buf)) return buf;
+        actual = buf.toString('utf8').trim(); // ¿base64 de un base64?
+    }
+    const crudo = Buffer.from(v, 'latin1'); // bytes enviados como texto
+    if (esZip(crudo) || esOle(crudo)) return crudo;
+    throw new Error('El adjunto no es un Excel válido');
+};
+
+// Descripción corta (sin datos sensibles) de lo recibido, para diagnóstico
+export const describirAdjunto = (valor) => {
+    if (valor && typeof valor === 'object') return `objeto con claves [${Object.keys(valor).join(', ')}]`;
+    const s = String(valor ?? '');
+    return `${typeof valor}, ${s.length} caracteres, empieza con "${s.slice(0, 24).replace(/[^\x20-\x7e]/g, '?')}"`;
+};
+
 // Lee un Excel (Buffer) y devuelve las filas normalizadas de la primera hoja.
 export const leerExcel = (buffer) => {
     const wb = XLSX.read(buffer, { type: 'buffer' });
