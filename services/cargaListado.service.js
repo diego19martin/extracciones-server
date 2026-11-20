@@ -1,96 +1,31 @@
 // Lógica compartida para cargar el listado de máquinas, tanto desde la carga
 // manual (pantalla /conversion) como desde la carga automática (mail
 // "Archivo para App" de Tesorería, recibido vía Power Automate).
-import XLSX from 'xlsx';
+import { Worker } from 'worker_threads';
 import { pool } from '../db.js';
 
-// Encabezados aceptados para cada campo (el archivo de Tesorería viene en
-// castellano; el formato histórico de la app usa machine/location/bill/...)
-const ALIAS = {
-    machine: ['machine', 'maquina', 'máquina', 'nro maquina', 'nro máquina'],
-    location: ['location', 'ubicacion', 'ubicación'],
-    bill: ['bill', 'importe', 'monto', 'stacker'],
-    zona: ['zona'],
-    moneda: ['moneda'],
-};
+export { normalizarFilas, decodificarAdjunto, describirAdjunto, leerExcel } from './excel.js';
 
-const normalizarClave = (k) => String(k || '').trim().toLowerCase();
-
-const buscarValor = (fila, campo) => {
-    const claves = Object.keys(fila);
-    const clave = claves.find((k) => ALIAS[campo].includes(normalizarClave(k)));
-    return clave === undefined ? undefined : fila[clave];
-};
-
-const normalizarMoneda = (valor) => {
-    const m = normalizarClave(valor);
-    if (m.startsWith('dol') || m.startsWith('dól') || m === 'usd' || m === 'u$s') return 'dolares';
-    return 'pesos';
-};
-
-// Convierte filas crudas (de un Excel o del front) al formato interno.
-// Descarta filas vacías o sin número de máquina (el archivo de Tesorería
-// trae filas de ceros al final) y máquinas repetidas.
-export const normalizarFilas = (filas) => {
-    const vistas = new Set();
-    const resultado = [];
-    for (const fila of filas || []) {
-        if (!fila || typeof fila !== 'object') continue;
-        const machine = String(buscarValor(fila, 'machine') ?? '').trim();
-        if (!machine || machine === '0' || vistas.has(machine)) continue;
-        vistas.add(machine);
-        resultado.push({
-            machine,
-            location: String(buscarValor(fila, 'location') ?? '').trim(),
-            bill: parseFloat(buscarValor(fila, 'bill')) || 0,
-            zona: String(buscarValor(fila, 'zona') ?? '').trim(),
-            moneda: normalizarMoneda(buscarValor(fila, 'moneda')),
+// Igual que leerExcel, pero en un hilo aparte con límite de tiempo.
+export const leerExcelSeguro = (buffer, limiteMs = 15000) =>
+    new Promise((resolve, reject) => {
+        const worker = new Worker(new URL('./leerExcel.worker.js', import.meta.url), {
+            workerData: { buffer },
         });
-    }
-    return resultado;
-};
-
-const esZip = (buf) => buf && buf.length > 4 && buf[0] === 0x50 && buf[1] === 0x4b; // "PK": .xlsx
-const esOle = (buf) => buf && buf.length > 8 && buf[0] === 0xd0 && buf[1] === 0xcf; // .xls viejo
-const pareceBase64 = (s) => typeof s === 'string' && s.length > 100 && /^[A-Za-z0-9+/=\r\n_-]+$/.test(s.slice(0, 2000));
-
-// Power Automate puede mandar el adjunto de distintas formas según cómo se
-// arme la expresión: base64 directo, objeto {"$content-type","$content"},
-// ese objeto serializado como texto, o base64 de un base64. Devuelve el Buffer
-// del Excel o lanza un error descriptivo.
-export const decodificarAdjunto = (valor) => {
-    let v = valor;
-    if (typeof v === 'string' && v.trim().startsWith('{')) {
-        try { v = JSON.parse(v); } catch (_) { /* no era JSON */ }
-    }
-    if (v && typeof v === 'object' && v.$content) v = v.$content;
-    if (typeof v !== 'string') throw new Error(`Formato de adjunto no reconocido (${typeof v})`);
-
-    let actual = v.trim();
-    for (let i = 0; i < 3; i++) {
-        if (!pareceBase64(actual)) break;
-        const buf = Buffer.from(actual, 'base64');
-        if (esZip(buf) || esOle(buf)) return buf;
-        actual = buf.toString('utf8').trim(); // ¿base64 de un base64?
-    }
-    const crudo = Buffer.from(v, 'latin1'); // bytes enviados como texto
-    if (esZip(crudo) || esOle(crudo)) return crudo;
-    throw new Error('El adjunto no es un Excel válido');
-};
-
-// Descripción corta (sin datos sensibles) de lo recibido, para diagnóstico
-export const describirAdjunto = (valor) => {
-    if (valor && typeof valor === 'object') return `objeto con claves [${Object.keys(valor).join(', ')}]`;
-    const s = String(valor ?? '');
-    return `${typeof valor}, ${s.length} caracteres, empieza con "${s.slice(0, 24).replace(/[^\x20-\x7e]/g, '?')}"`;
-};
-
-// Lee un Excel (Buffer) y devuelve las filas normalizadas de la primera hoja.
-export const leerExcel = (buffer) => {
-    const wb = XLSX.read(buffer, { type: 'buffer' });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    return normalizarFilas(XLSX.utils.sheet_to_json(ws, { defval: '' }));
-};
+        const timer = setTimeout(() => {
+            worker.terminate();
+            reject(new Error(`La lectura del Excel superó ${limiteMs / 1000} s (archivo dañado o inválido)`));
+        }, limiteMs);
+        worker.once('message', (m) => {
+            clearTimeout(timer);
+            worker.terminate();
+            m.ok ? resolve(m.filas) : reject(new Error(m.error));
+        });
+        worker.once('error', (e) => {
+            clearTimeout(timer);
+            reject(e);
+        });
+    });
 
 export const obtenerLimites = async () => {
     const [rows] = await pool.query('SELECT * FROM `config` ORDER BY id DESC LIMIT 1');

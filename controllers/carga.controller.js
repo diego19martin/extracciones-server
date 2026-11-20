@@ -8,7 +8,7 @@ import { io } from '../index.js';
 import {
     decodificarAdjunto,
     describirAdjunto,
-    leerExcel,
+    leerExcelSeguro,
     normalizarFilas,
     obtenerLimites,
     procesarListado,
@@ -37,6 +37,8 @@ export const postArchivoAutomatico = async (req, res) => {
     try {
         const { nombreArchivo, contenidoBase64, filas } = req.body || {};
 
+        console.log(`Carga automática: recibido "${nombreArchivo || '(sin nombre)'}" - adjunto: ${describirAdjunto(contenidoBase64)}`);
+
         let machines;
         if (contenidoBase64) {
             let buffer;
@@ -47,7 +49,7 @@ export const postArchivoAutomatico = async (req, res) => {
                 return res.status(400).json({ error: e.message, recibido: describirAdjunto(contenidoBase64) });
             }
             try {
-                machines = leerExcel(buffer);
+                machines = await leerExcelSeguro(buffer);
             } catch (e) {
                 console.error(`Carga automática: no se pudo leer el Excel (${e.message})`);
                 return res.status(400).json({ error: 'No se pudo leer el Excel', details: e.message });
