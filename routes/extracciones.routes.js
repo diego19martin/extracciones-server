@@ -17,8 +17,13 @@ import {
     getConfig,
     generateExcelExport
 } from "../controllers/extracciones.controller.js";
+import { postArchivoAutomatico, getUltimaCarga } from "../controllers/carga.controller.js";
 
 const router = Router();
+
+// Carga automática del "Archivo para App" (Power Automate)
+router.post('/archivoAutomatico', postArchivoAutomatico);
+router.get('/ultimaCarga', getUltimaCarga);
 
 router.post('/postmaquinas', postList);
 router.post('/postconfig', postConfig);

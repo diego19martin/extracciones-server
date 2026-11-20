@@ -6,6 +6,7 @@ import path from 'path';
 import ExcelJS from 'exceljs';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { registrarCarga } from '../services/cargaListado.service.js';
 
 
 // Definir __dirname para módulos ECMAScript
@@ -75,6 +76,16 @@ export const postList = async (req, res) => {
         // Obtener la tabla actualizada
         const [updatedTable] = await pool.query('SELECT * FROM listado_filtrado ORDER BY location ASC');
         console.log('Registros en listado_filtrado:', updatedTable.length);
+
+        await registrarCarga({
+            origen: 'manual',
+            nombreArchivo: null,
+            maquinas: machines.length,
+            aExtraer: filteredMachines.length,
+            pesoLimit: isNaN(pesoLimit) ? 0 : pesoLimit,
+            dolarLimit: isNaN(dolarLimit) ? 1 : dolarLimit,
+        });
+        io.emit('listadoCargado', { origen: 'manual', maquinas: machines.length, aExtraer: filteredMachines.length });
 
         return res.json({
             status: 'success',
